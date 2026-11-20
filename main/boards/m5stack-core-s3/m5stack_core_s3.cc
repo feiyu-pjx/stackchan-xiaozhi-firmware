@@ -309,14 +309,18 @@ void StackChanServo::Nod() {
         auto* c = static_cast<ServoAnimCtx*>(arg);
         auto* s = c->servo;
         int y = c->base_yaw, p = c->base_pitch;
-        s->MoveTo(y, p - 10, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p + 5, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p - 8, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p, 300);
-        vTaskDelay(pdMS_TO_TICKS(300));
+        // 点头要看得清：pitch 上下各 8 度（往返 16 度），每段 700ms，来回两次。
+        // base 先收进 [13, 52]，保证 ±8 不被 5~60 的限位截掉幅度。
+        if (p < 13) p = 13;
+        if (p > 52) p = 52;
+        for (int i = 0; i < 2; ++i) {
+            s->MoveTo(y, p - 8, 700);
+            vTaskDelay(pdMS_TO_TICKS(700));
+            s->MoveTo(y, p + 8, 700);
+            vTaskDelay(pdMS_TO_TICKS(700));
+        }
+        s->MoveTo(y, c->base_pitch, 700);
+        vTaskDelay(pdMS_TO_TICKS(700));
         s->anim_running_ = false;
         if (s->tracker_) s->tracker_->Resume();
         delete c;
@@ -333,14 +337,18 @@ void StackChanServo::Shake() {
         auto* c = static_cast<ServoAnimCtx*>(arg);
         auto* s = c->servo;
         int y = c->base_yaw, p = c->base_pitch;
-        s->MoveTo(y - 15, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y + 15, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y - 10, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p, 300);
-        vTaskDelay(pdMS_TO_TICKS(300));
+        // 摇头要看得清：yaw 左右各 8 度（往返 16 度），每段 700ms，来回两次。
+        // base 先收进 [-37, 37]，保证 ±8 不被 ±45 的限位截掉幅度。
+        if (y < -37) y = -37;
+        if (y > 37) y = 37;
+        for (int i = 0; i < 2; ++i) {
+            s->MoveTo(y - 8, p, 700);
+            vTaskDelay(pdMS_TO_TICKS(700));
+            s->MoveTo(y + 8, p, 700);
+            vTaskDelay(pdMS_TO_TICKS(700));
+        }
+        s->MoveTo(c->base_yaw, p, 700);
+        vTaskDelay(pdMS_TO_TICKS(700));
         s->anim_running_ = false;
         if (s->tracker_) s->tracker_->Resume();
         delete c;
