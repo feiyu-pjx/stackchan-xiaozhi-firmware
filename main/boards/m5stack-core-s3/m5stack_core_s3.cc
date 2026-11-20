@@ -2141,6 +2141,7 @@ private:
         static bool pet_triggered = false;
         static bool pending_single_release = false;
         static int64_t pending_single_release_time = 0;
+        static int follow_yaw_ = 0, follow_pitch_ = 30;
 
         const int64_t SHORT_TOUCH_MS = 500;
         const int64_t PET_TOUCH_MS = 1500;
@@ -2168,6 +2169,11 @@ private:
             // 按下
             was_touched = true;
             pet_triggered = false;
+            // 摸头跟随：记下当前头部位置，并暂停自动扫描/人脸追踪，避免抢位置
+            follow_yaw_ = servo_.GetCurrentYaw();
+            follow_pitch_ = servo_.GetCurrentPitch();
+            servo_.PauseScan();
+            if (tracker_) tracker_->Pause(false);
             touch_start_time = now;
             touch_start_x = touch_point.x;
             touch_start_y = touch_point.y;
@@ -2178,6 +2184,21 @@ private:
         else if (touch_point.num > 0 && was_touched) {
             // 按住中 — 累积移动距离
             touch_total_move += abs(touch_point.x - touch_last_x) + abs(touch_point.y - touch_last_y);
+
+            // 摸头跟随：手往右→头往右，手往上→抬头（像小猫蹭手）
+            {
+                int dx = touch_point.x - touch_last_x;
+                int dy = touch_point.y - touch_last_y;
+                if (dx != 0 || dy != 0) {
+                    follow_yaw_ += dx * 2;      // 2 倍增益，手感更跟手
+                    follow_pitch_ -= dy * 2;
+                    if (follow_yaw_ > 45) follow_yaw_ = 45;
+                    if (follow_yaw_ < -45) follow_yaw_ = -45;
+                    if (follow_pitch_ > 55) follow_pitch_ = 55;
+                    if (follow_pitch_ < 10) follow_pitch_ = 10;
+                    servo_.MoveTo(follow_yaw_, follow_pitch_, 300);
+                }
+            }
             touch_last_x = touch_point.x;
             touch_last_y = touch_point.y;
 
@@ -2211,6 +2232,8 @@ private:
         else if (touch_point.num == 0 && was_touched) {
             // 抬起
             was_touched = false;
+            servo_.ResumeScan();
+            if (tracker_) tracker_->Resume();
             int64_t touch_duration = now - touch_start_time;
             int dx_total = touch_last_x - touch_start_x;
             int dy_total = touch_last_y - touch_start_y;
