@@ -1,3 +1,4 @@
+CONFIG_OTA_URL="https://121.196.150.116.sslip.io/xz-ota/xiaozhi/ota/"
 CONFIG_BOARD_TYPE_M5STACK_CORE_S3=y
 CONFIG_SPIRAM_MODE_QUAD=y
 
