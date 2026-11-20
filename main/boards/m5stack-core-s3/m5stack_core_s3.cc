@@ -2173,7 +2173,7 @@ private:
             follow_yaw_ = servo_.GetCurrentYaw();
             follow_pitch_ = servo_.GetCurrentPitch();
             servo_.PauseScan();
-            if (tracker_) tracker_->Pause(false);
+            face_tracker_.Pause(false);
             touch_start_time = now;
             touch_start_x = touch_point.x;
             touch_start_y = touch_point.y;
@@ -2233,7 +2233,7 @@ private:
             // 抬起
             was_touched = false;
             servo_.ResumeScan();
-            if (tracker_) tracker_->Resume();
+            face_tracker_.Resume();
             int64_t touch_duration = now - touch_start_time;
             int dx_total = touch_last_x - touch_start_x;
             int dy_total = touch_last_y - touch_start_y;
