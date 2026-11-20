@@ -1669,7 +1669,9 @@ private:
         si12t_last_state_ = si12t_dev_ ? Si12tReadReg(0x10) : 0;
 
         int64_t last_touch_time = 0;
-        const int64_t TOUCH_COOLDOWN_US = 5000000;  // 5 秒冷却
+        const int64_t TOUCH_COOLDOWN_US = 10000000;  // 10 秒冷却，避免连续误触
+        const int TOUCH_HOLD_TICKS = 3;              // 连续 3 次（约 300ms）按住才算真碰
+        static int hold_ticks[3] = {0, 0, 0};
         while (true) {
             vTaskDelay(pdMS_TO_TICKS(100));
             if (!si12t_dev_) continue;
@@ -1678,7 +1680,10 @@ private:
             for (int zone = 0; zone < 3; zone++) {
                 uint8_t cur = (out >> (zone * 2)) & 0x03;
                 uint8_t prev = (si12t_last_state_ >> (zone * 2)) & 0x03;
-                if (cur != 0 && prev == 0 && (now - last_touch_time > TOUCH_COOLDOWN_US)) {
+                if (cur == 0) { hold_ticks[zone] = 0; continue; }
+                if (prev == 0) { hold_ticks[zone] = 0; }
+                hold_ticks[zone]++;
+                if (hold_ticks[zone] >= TOUCH_HOLD_TICKS && (now - last_touch_time > TOUCH_COOLDOWN_US)) {
                     // display = 屏幕展示的完整动作描写（带括号，作为场景旁白）
                     // tag    = 发给 LLM 的短动作标签（≤6 字），避开 detect.text 长度限制
                     struct TouchMsg { const char* display; const char* tag; };
@@ -1698,6 +1703,7 @@ private:
                     }
                     SendUserMessage(m.tag);
                     last_touch_time = now;
+                    hold_ticks[zone] = 0;
                     break;
                 }
             }
