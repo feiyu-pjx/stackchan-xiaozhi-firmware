@@ -2219,7 +2219,7 @@ private:
                 } else {
                     pool = (dy_total < 0) ? &UpSwipePool() : &DownSwipePool();
                 }
-                SendUserMessage(PickRandom(*pool));
+                // 手势旁白已停用（FT6336 读取超时会产生幽灵手势）
                 return;
             }
 
@@ -2229,7 +2229,7 @@ private:
                 if (pending_single_release && (now - pending_single_release_time) <= DOUBLE_CLICK_MS) {
                     // 第二次短按落在窗口内 → 双击
                     pending_single_release = false;
-                    SendUserMessage(PickRandom(DoubleClickPool()));
+                    // 双击旁白已停用（同上）
                 } else {
                     // 候选单击，等下一帧或下次按下判定
                     pending_single_release = true;
