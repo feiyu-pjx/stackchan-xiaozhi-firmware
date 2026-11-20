@@ -88,8 +88,8 @@ idf.py build flash
 
 | 配置项 | 默认值 | 说明 |
 |---|---|---|
-| `CONFIG_CUSTOM_WAKE_WORD` | `ni hao xiao zhi` | 唤醒词拼音 |
-| `CONFIG_CUSTOM_WAKE_WORD_DISPLAY` | `你好小智` | 中文显示 |
+| `CONFIG_CUSTOM_WAKE_WORD` | `da fei yu` | 唤醒词拼音 |
+| `CONFIG_CUSTOM_WAKE_WORD_DISPLAY` | `大肥鱼` | 中文显示 |
 | `CONFIG_WAKE_WORD_SENSITIVITY` | `MEDIUM` | `LOW` / `MEDIUM` / `HIGH` |
 
 ### 🛠 自定义行为池

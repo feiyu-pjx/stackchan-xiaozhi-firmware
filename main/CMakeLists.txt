@@ -1129,7 +1129,10 @@ function(build_default_assets_bin)
         COMMAND python ${PROJECT_DIR}/scripts/build_default_assets.py ${BUILD_ARGS}
         DEPENDS
             ${SDKCONFIG}
+            ${PROJECT_DIR}/sdkconfig.defaults
+            ${PROJECT_DIR}/sdkconfig.defaults.esp32s3
             ${PROJECT_DIR}/scripts/build_default_assets.py
+            ${PROJECT_DIR}/scripts/verify_default_assets.py
         COMMENT "Building default assets.bin based on configuration"
         VERBATIM
     )

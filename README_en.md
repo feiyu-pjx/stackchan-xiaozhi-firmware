@@ -76,8 +76,8 @@ Edit `sdkconfig.defaults`:
 
 | Config | Default | Description |
 |---|---|---|
-| `CONFIG_CUSTOM_WAKE_WORD` | `ni hao xiao zhi` | Wake word pinyin |
-| `CONFIG_CUSTOM_WAKE_WORD_DISPLAY` | `你好小智` | Chinese display |
+| `CONFIG_CUSTOM_WAKE_WORD` | `da fei yu` | Wake word pinyin |
+| `CONFIG_CUSTOM_WAKE_WORD_DISPLAY` | `大肥鱼` | Chinese display |
 | `CONFIG_WAKE_WORD_SENSITIVITY` | `MEDIUM` | `LOW` / `MEDIUM` / `HIGH` |
 
 ### 🛠 Custom Behavior Pools

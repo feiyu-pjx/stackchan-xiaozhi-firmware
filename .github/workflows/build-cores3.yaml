@@ -49,6 +49,13 @@ jobs:
           fi
           idf.py build
 
+      - name: Verify packaged MultiNet wake command
+        shell: bash
+        run: |
+          python scripts/verify_default_assets.py \
+            --sdkconfig sdkconfig \
+            --assets build/generated_assets.bin
+
       - name: Pack flash artifacts
         shell: bash
         run: |

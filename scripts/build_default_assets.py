@@ -616,6 +616,25 @@ def read_custom_wake_word_from_sdkconfig(sdkconfig_path):
     return None
 
 
+def build_multinet_model_info(custom_wake_word_config, multinet_models):
+    """Build the runtime command table from the effective sdkconfig values."""
+    if not custom_wake_word_config or not multinet_models:
+        return None
+
+    return {
+        "language": get_language_from_multinet_models(multinet_models),
+        "duration": 3000,
+        "threshold": custom_wake_word_config['threshold'],
+        "commands": [
+            {
+                "command": custom_wake_word_config['wake_word'],
+                "text": custom_wake_word_config['display'],
+                "action": "wake"
+            }
+        ]
+    }
+
+
 def get_language_from_multinet_models(multinet_models):
     """
     Determine language from multinet model names
@@ -859,6 +878,9 @@ def main():
     # 3. Only package multinet models if USE_CUSTOM_WAKE_WORD=y
     if wake_word_config['use_custom_wake_word']:
         multinet_model_paths = get_multinet_model_paths(multinet_model_names, args.esp_sr_model_path)
+        if len(multinet_model_paths) != len(multinet_model_names):
+            print("Error: One or more selected MultiNet model directories are missing")
+            sys.exit(1)
     elif multinet_model_names:
         print(f"  Note: Found multinet models {multinet_model_names} but USE_CUSTOM_WAKE_WORD is disabled, skipping")
     
@@ -882,27 +904,11 @@ def main():
     
     # Read custom wake word configuration
     custom_wake_word_config = read_custom_wake_word_from_sdkconfig(args.sdkconfig)
-    multinet_model_info = None
-    
-    if custom_wake_word_config and multinet_model_paths:
-        # Determine language from multinet models
-        language = get_language_from_multinet_models(multinet_model_names)
-        
-        # Build multinet_model info structure
-        multinet_model_info = {
-            "language": language,
-            "duration": 3000,  # Default duration in ms
-            "threshold": custom_wake_word_config['threshold'],
-            "commands": [
-                {
-                    "command": custom_wake_word_config['wake_word'],
-                    "text": custom_wake_word_config['display'],
-                    "action": "wake"
-                }
-            ]
-        }
+    multinet_model_info = build_multinet_model_info(custom_wake_word_config, multinet_model_paths)
+
+    if multinet_model_info:
         print(f"  custom wake word: {custom_wake_word_config['wake_word']} ({custom_wake_word_config['display']})")
-        print(f"  wake word language: {language}")
+        print(f"  wake word language: {multinet_model_info['language']}")
         print(f"  wake word threshold: {custom_wake_word_config['threshold']}")
     
     # Check if we have anything to build
