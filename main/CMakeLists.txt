@@ -202,6 +202,7 @@ elseif(CONFIG_BOARD_TYPE_M5STACK_CORE_S3)
     set(BUILTIN_TEXT_FONT font_puhui_basic_20_4)
     set(BUILTIN_ICON_FONT font_awesome_20_4)
     set(DEFAULT_EMOJI_COLLECTION twemoji_64)
+    set(DEFAULT_FULL_FACE_EMOTES ON)
 elseif(CONFIG_BOARD_TYPE_M5STACK_CORE_TAB5)
     set(BOARD_TYPE "m5stack-tab5")
     set(BUILTIN_TEXT_FONT font_puhui_basic_30_4)
@@ -1115,6 +1116,10 @@ function(build_default_assets_bin)
         list(APPEND BUILD_ARGS "--emoji_collection" "${DEFAULT_EMOJI_COLLECTION}")
     endif()
 
+    if(DEFAULT_FULL_FACE_EMOTES)
+        list(APPEND BUILD_ARGS "--full_face_emotes")
+    endif()
+
     # Add default assets extra files if defined
     if(DEFAULT_ASSETS_EXTRA_FILES)
         list(APPEND BUILD_ARGS "--extra_files" "${DEFAULT_ASSETS_EXTRA_FILES}")
@@ -1131,6 +1136,7 @@ function(build_default_assets_bin)
             ${SDKCONFIG}
             ${PROJECT_DIR}/sdkconfig.defaults
             ${PROJECT_DIR}/sdkconfig.defaults.esp32s3
+            ${PROJECT_DIR}/main/CMakeLists.txt
             ${PROJECT_DIR}/scripts/build_default_assets.py
             ${PROJECT_DIR}/scripts/verify_default_assets.py
         COMMENT "Building default assets.bin based on configuration"

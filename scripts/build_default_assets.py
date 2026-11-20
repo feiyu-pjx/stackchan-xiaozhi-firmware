@@ -17,6 +17,7 @@ import shutil
 import sys
 import json
 import struct
+import zlib
 from datetime import datetime
 
 
@@ -260,6 +261,142 @@ def process_emoji_collection(emoji_collection_dir, assets_dir):
                                 "file": file
                             })
     
+    return emoji_list
+
+
+FULL_FACE_EMOTIONS = (
+    "neutral", "happy", "sad", "angry", "surprised",
+    "thinking", "sleepy", "listening", "speaking",
+)
+
+
+def _draw_ellipse(pixels, cx, cy, rx, ry, color, outline=None, thickness=1):
+    height = len(pixels)
+    width = len(pixels[0])
+    for y in range(max(0, cy - ry), min(height, cy + ry + 1)):
+        for x in range(max(0, cx - rx), min(width, cx + rx + 1)):
+            distance = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+            if distance <= 1:
+                is_outline = outline is not None and distance >= (1 - thickness / min(rx, ry)) ** 2
+                pixels[y][x] = outline if is_outline else color
+
+
+def _draw_line(pixels, start, end, color, thickness=3):
+    x0, y0 = start
+    x1, y1 = end
+    steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+    radius = max(0, thickness // 2)
+    for step in range(steps + 1):
+        x = round(x0 + (x1 - x0) * step / steps)
+        y = round(y0 + (y1 - y0) * step / steps)
+        for py in range(max(0, y - radius), min(len(pixels), y + radius + 1)):
+            for px in range(max(0, x - radius), min(len(pixels[0]), x + radius + 1)):
+                if (px - x) ** 2 + (py - y) ** 2 <= radius ** 2 + 1:
+                    pixels[py][px] = color
+
+
+def _draw_curve(pixels, start, control, end, color, thickness=4):
+    previous = start
+    for step in range(1, 25):
+        t = step / 24
+        point = (
+            round((1 - t) ** 2 * start[0] + 2 * (1 - t) * t * control[0] + t ** 2 * end[0]),
+            round((1 - t) ** 2 * start[1] + 2 * (1 - t) * t * control[1] + t ** 2 * end[1]),
+        )
+        _draw_line(pixels, previous, point, color, thickness)
+        previous = point
+
+
+def _png_chunk(chunk_type, data):
+    chunk = chunk_type + data
+    return struct.pack(">I", len(data)) + chunk + struct.pack(">I", zlib.crc32(chunk) & 0xFFFFFFFF)
+
+
+def _full_face_png(emotion):
+    size = 128
+    transparent = (0, 0, 0, 0)
+    ink = (47, 42, 68, 255)
+    skin = (255, 238, 194, 255)
+    pixels = [[transparent for _ in range(size)] for _ in range(size)]
+
+    _draw_ellipse(pixels, 17, 66, 12, 19, (244, 191, 157, 255), ink, 2)
+    _draw_ellipse(pixels, 111, 66, 12, 19, (244, 191, 157, 255), ink, 2)
+    _draw_ellipse(pixels, 64, 64, 53, 56, skin, ink, 3)
+    _draw_ellipse(pixels, 42, 86, 8, 4, (255, 188, 184, 255))
+    _draw_ellipse(pixels, 86, 86, 8, 4, (255, 188, 184, 255))
+
+    brows = {
+        "neutral": (((34, 39), (49, 37)), ((79, 37), (94, 39))),
+        "happy": (((34, 38), (49, 36)), ((79, 36), (94, 38))),
+        "sad": (((34, 38), (49, 43)), ((79, 43), (94, 38))),
+        "angry": (((34, 44), (49, 36)), ((79, 36), (94, 44))),
+        "surprised": (((34, 34), (49, 32)), ((79, 32), (94, 34))),
+        "thinking": (((34, 38), (49, 36)), ((79, 31), (94, 34))),
+        "sleepy": (((34, 43), (49, 45)), ((79, 45), (94, 43))),
+        "listening": (((34, 35), (49, 33)), ((79, 33), (94, 35))),
+        "speaking": (((34, 38), (49, 36)), ((79, 36), (94, 38))),
+    }
+    left_brow, right_brow = brows[emotion]
+    _draw_line(pixels, left_brow[0], left_brow[1], ink, 4)
+    _draw_line(pixels, right_brow[0], right_brow[1], ink, 4)
+
+    if emotion in ("happy", "sleepy"):
+        eye_y = 55 if emotion == "happy" else 58
+        for eye_x in (42, 86):
+            _draw_curve(pixels, (eye_x - 8, eye_y), (eye_x, eye_y - 7 if emotion == "happy" else eye_y - 2),
+                        (eye_x + 8, eye_y), ink, 4)
+    else:
+        eye_rx, eye_ry = (11, 13) if emotion in ("surprised", "listening") else (9, 11)
+        for eye_x in (42, 86):
+            _draw_ellipse(pixels, eye_x, 57, eye_rx, eye_ry, (255, 255, 255, 255), ink, 2)
+            pupil_x = eye_x + (3 if emotion == "thinking" and eye_x == 86 else 0)
+            pupil_y = 59
+            _draw_ellipse(pixels, pupil_x, pupil_y, 4, 6, (80, 105, 142, 255))
+            _draw_ellipse(pixels, pupil_x - 1, pupil_y - 2, 1, 2, (255, 255, 255, 255))
+        if emotion == "sleepy":
+            for eye_x in (42, 86):
+                _draw_line(pixels, (eye_x - 10, 55), (eye_x + 10, 60), skin, 7)
+                _draw_curve(pixels, (eye_x - 8, 59), (eye_x, 63), (eye_x + 8, 61), ink, 3)
+
+    if emotion == "surprised":
+        _draw_ellipse(pixels, 64, 86, 7, 11, ink)
+    elif emotion == "speaking":
+        _draw_ellipse(pixels, 64, 84, 15, 17, ink)
+        _draw_ellipse(pixels, 64, 94, 8, 4, (248, 112, 132, 255))
+    else:
+        mouth_curves = {
+            "neutral": (78, 88),
+            "happy": (72, 99),
+            "sad": (94, 72),
+            "angry": (91, 73),
+            "thinking": (81, 85),
+            "sleepy": (83, 87),
+            "listening": (80, 88),
+        }
+        control_y, end_y = mouth_curves[emotion]
+        _draw_curve(pixels, (48, 80), (64, control_y), (80, end_y), ink, 4)
+
+    if emotion == "thinking":
+        _draw_ellipse(pixels, 105, 27, 3, 3, (116, 173, 212, 255))
+        _draw_ellipse(pixels, 112, 20, 5, 5, (116, 173, 212, 255))
+    elif emotion == "listening":
+        _draw_curve(pixels, (8, 49), (1, 64), (8, 79), (116, 173, 212, 255), 3)
+        _draw_curve(pixels, (120, 49), (127, 64), (120, 79), (116, 173, 212, 255), 3)
+
+    raw = b"".join(b"\0" + bytes(channel for pixel in row for channel in pixel) for row in pixels)
+    header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", header) + \
+        _png_chunk(b"IDAT", zlib.compress(raw, 9)) + _png_chunk(b"IEND", b"")
+
+
+def process_full_face_emotes(assets_dir):
+    """Generate and register the CoreS3 full-face emotion images."""
+    emoji_list = []
+    for emotion in FULL_FACE_EMOTIONS:
+        filename = f"{emotion}.png"
+        with open(os.path.join(assets_dir, filename), "wb") as image_file:
+            image_file.write(_full_face_png(emotion))
+        emoji_list.append({"name": emotion, "file": filename})
     return emoji_list
 
 
@@ -761,7 +898,10 @@ def get_emoji_collection_path(default_emoji_collection, xiaozhi_fonts_path, proj
     return None
 
 
-def build_assets_integrated(wakenet_model_paths, multinet_model_paths, text_font_path, emoji_collection_path, extra_files_path, output_path, multinet_model_info=None):
+def build_assets_integrated(
+    wakenet_model_paths, multinet_model_paths, text_font_path, emoji_collection_path,
+    extra_files_path, output_path, multinet_model_info=None, full_face_emotes=False,
+):
     """
     Build assets using integrated functions (no external dependencies)
     """
@@ -781,7 +921,14 @@ def build_assets_integrated(wakenet_model_paths, multinet_model_paths, text_font
         # Process each component
         srmodels = process_sr_models(wakenet_model_paths, multinet_model_paths, temp_build_dir, assets_dir) if (wakenet_model_paths or multinet_model_paths) else None
         text_font = process_text_font(text_font_path, assets_dir) if text_font_path else None
-        emoji_collection = process_emoji_collection(emoji_collection_path, assets_dir) if emoji_collection_path else None
+        emoji_collection = process_emoji_collection(emoji_collection_path, assets_dir) if emoji_collection_path else []
+        if full_face_emotes:
+            full_face_entries = process_full_face_emotes(assets_dir)
+            full_face_names = {entry["name"] for entry in full_face_entries}
+            emoji_collection = [
+                entry for entry in emoji_collection if entry["name"] not in full_face_names
+            ]
+            emoji_collection.extend(full_face_entries)
         extra_files = process_extra_files(extra_files_path, assets_dir) if extra_files_path else None
         
         # Generate index.json
@@ -827,6 +974,8 @@ def main():
     parser.add_argument('--sdkconfig', required=True, help='Path to sdkconfig file')
     parser.add_argument('--builtin_text_font', help='Builtin text font name (e.g., font_puhui_basic_16_4)')
     parser.add_argument('--emoji_collection', help='Default emoji collection name (e.g., emojis_32)')
+    parser.add_argument('--full_face_emotes', action='store_true',
+                        help='Include the built-in full-face emotion set')
     parser.add_argument('--output', required=True, help='Output path for assets.bin')
     parser.add_argument('--esp_sr_model_path', help='Path to ESP-SR model directory')
     parser.add_argument('--xiaozhi_fonts_path', help='Path to xiaozhi-fonts component directory')
@@ -912,7 +1061,9 @@ def main():
         print(f"  wake word threshold: {custom_wake_word_config['threshold']}")
     
     # Check if we have anything to build
-    if not wakenet_model_paths and not multinet_model_paths and not text_font_path and not emoji_collection_path and not extra_files_path and not multinet_model_info:
+    if (not wakenet_model_paths and not multinet_model_paths and not text_font_path
+            and not emoji_collection_path and not extra_files_path and not multinet_model_info
+            and not args.full_face_emotes):
         print("Warning: No assets to build (no SR models, text font, emoji collection, extra files, or custom wake word)")
         # Create an empty assets.bin file
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -923,7 +1074,8 @@ def main():
     
     # Build the assets
     success = build_assets_integrated(wakenet_model_paths, multinet_model_paths, text_font_path, emoji_collection_path, 
-                                     extra_files_path, args.output, multinet_model_info)
+                                     extra_files_path, args.output, multinet_model_info,
+                                     args.full_face_emotes)
     
     if not success:
         sys.exit(1)

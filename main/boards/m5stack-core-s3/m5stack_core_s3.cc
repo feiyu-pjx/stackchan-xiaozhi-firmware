@@ -186,7 +186,6 @@ public:
         manual_lock_ = locked;
         ESP_LOGI("FaceTrack", "Manual lock %s", locked ? "ENABLED" : "DISABLED");
     }
-
     bool IsManualLocked() const { return manual_lock_; }
 
     bool IsPaused() const { return paused_; }
@@ -295,6 +294,9 @@ struct ServoAnimCtx {
     StackChanServo* servo;
     int base_yaw;
     int base_pitch;
+    bool tracker_was_locked = false;
+    bool tracker_was_paused = false;
+    bool scan_was_running = false;
 };
 
 void StackChanServo::Nod() {
@@ -303,49 +305,89 @@ void StackChanServo::Nod() {
     // 用 servo 当前命令位置作 base —— 不用 tracker_->GetYaw()，因为后者只反映
     // 人脸追踪的目标值，不反映 LLM head.move 工具设的硬位置。这样 Nod 在
     // 当前位置上下点头，不会把头甩回 (0, 30)。
-    auto* ctx = new ServoAnimCtx{this, GetCurrentYaw(), GetCurrentPitch()};
-    if (tracker_) tracker_->Pause(false);
-    xTaskCreatePinnedToCore([](void* arg) {
+    auto* ctx = new ServoAnimCtx{
+        this, GetCurrentYaw(), GetCurrentPitch(),
+        tracker_ && tracker_->IsManualLocked(),
+        tracker_ && tracker_->IsPaused(), scan_running_
+    };
+    if (tracker_) {
+        tracker_->SetManualLock(true);
+        tracker_->Pause(false);
+    }
+    PauseScan();
+    if (xTaskCreatePinnedToCore([](void* arg) {
         auto* c = static_cast<ServoAnimCtx*>(arg);
         auto* s = c->servo;
         int y = c->base_yaw, p = c->base_pitch;
-        s->MoveTo(y, p - 10, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p + 5, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p - 8, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p, 300);
-        vTaskDelay(pdMS_TO_TICKS(300));
+        for (int i = 0; i < 2; ++i) {
+            s->MoveTo(y, p + 18, 650);
+            vTaskDelay(pdMS_TO_TICKS(650));
+            s->MoveTo(y, p - 18, 650);
+            vTaskDelay(pdMS_TO_TICKS(650));
+        }
+        s->MoveTo(y, p, 650);
+        vTaskDelay(pdMS_TO_TICKS(650));
         s->anim_running_ = false;
-        if (s->tracker_) s->tracker_->Resume();
+        if (s->tracker_) {
+            s->tracker_->SetManualLock(c->tracker_was_locked);
+            if (!c->tracker_was_locked && !c->tracker_was_paused) s->tracker_->Resume();
+        }
+        if (!s->tracker_ && c->scan_was_running) s->ResumeScan();
         delete c;
         vTaskDelete(nullptr);
-    }, "nod", 2048, ctx, 2, nullptr, 1);
+    }, "nod", 2048, ctx, 2, nullptr, 1) != pdPASS) {
+        anim_running_ = false;
+        if (tracker_) {
+            tracker_->SetManualLock(ctx->tracker_was_locked);
+            if (!ctx->tracker_was_locked && !ctx->tracker_was_paused) tracker_->Resume();
+        }
+        if (!tracker_ && ctx->scan_was_running) ResumeScan();
+        delete ctx;
+    }
 }
 
 void StackChanServo::Shake() {
     if (anim_running_) return;
     anim_running_ = true;
-    auto* ctx = new ServoAnimCtx{this, GetCurrentYaw(), GetCurrentPitch()};
-    if (tracker_) tracker_->Pause(false);
-    xTaskCreatePinnedToCore([](void* arg) {
+    auto* ctx = new ServoAnimCtx{
+        this, GetCurrentYaw(), GetCurrentPitch(),
+        tracker_ && tracker_->IsManualLocked(),
+        tracker_ && tracker_->IsPaused(), scan_running_
+    };
+    if (tracker_) {
+        tracker_->SetManualLock(true);
+        tracker_->Pause(false);
+    }
+    PauseScan();
+    if (xTaskCreatePinnedToCore([](void* arg) {
         auto* c = static_cast<ServoAnimCtx*>(arg);
         auto* s = c->servo;
         int y = c->base_yaw, p = c->base_pitch;
-        s->MoveTo(y - 15, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y + 15, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y - 10, p, 200);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        s->MoveTo(y, p, 300);
-        vTaskDelay(pdMS_TO_TICKS(300));
+        for (int i = 0; i < 2; ++i) {
+            s->MoveTo(y - 18, p, 650);
+            vTaskDelay(pdMS_TO_TICKS(650));
+            s->MoveTo(y + 18, p, 650);
+            vTaskDelay(pdMS_TO_TICKS(650));
+        }
+        s->MoveTo(y, p, 650);
+        vTaskDelay(pdMS_TO_TICKS(650));
         s->anim_running_ = false;
-        if (s->tracker_) s->tracker_->Resume();
+        if (s->tracker_) {
+            s->tracker_->SetManualLock(c->tracker_was_locked);
+            if (!c->tracker_was_locked && !c->tracker_was_paused) s->tracker_->Resume();
+        }
+        if (!s->tracker_ && c->scan_was_running) s->ResumeScan();
         delete c;
         vTaskDelete(nullptr);
-    }, "shake", 2048, ctx, 2, nullptr, 1);
+    }, "shake", 2048, ctx, 2, nullptr, 1) != pdPASS) {
+        anim_running_ = false;
+        if (tracker_) {
+            tracker_->SetManualLock(ctx->tracker_was_locked);
+            if (!ctx->tracker_was_locked && !ctx->tracker_was_paused) tracker_->Resume();
+        }
+        if (!tracker_ && ctx->scan_was_running) ResumeScan();
+        delete ctx;
+    }
 }
 
 void StackChanServo::Tilt() {
@@ -1354,6 +1396,7 @@ private:
     // ---- PY32 持久 I2C 设备句柄（控 LED + 其他扩展）----
     i2c_master_dev_handle_t py32_dev_ = nullptr;
     bool led_manual_ = false;
+    uint16_t led_colors_[12] = {};
     // ---- BMI270 (IMU) ----
     i2c_master_dev_handle_t bmi_i2c_dev_ = nullptr;
     struct bmi2_dev bmi_dev_storage_ = {};
@@ -1573,6 +1616,9 @@ private:
         bool ok1 = Py32WriteRegBlock(0x30, data, count * 2);
         uint8_t refresh = (uint8_t)(count | 0x40);
         bool ok2 = Py32WriteRegBlock(0x24, &refresh, 1);
+        if (ok1 && ok2 && count == 12) {
+            memcpy(led_colors_, rgb565_colors, sizeof(led_colors_));
+        }
         return ok1 && ok2;
     }
 
@@ -1721,22 +1767,39 @@ private:
     void RegisterLedMcpTools() {
         auto& mcp = McpServer::GetInstance();
         mcp.AddTool("self.led.set_color",
-            "Set the LED ring color. Use this when the user asks to change the light color. Args: r,g,b (0-255 each).",
+            "Set LED ring colors. Args: r,g,b (0-255 each), index (0-11, optional), "
+            "count (optional). Omit index and count to set the whole ring; with index "
+            "but no count, only that LED is changed. Set index to -1 with a count to "
+            "change the first count LEDs.",
             PropertyList({
                 Property("r", kPropertyTypeInteger, 0, 255),
                 Property("g", kPropertyTypeInteger, 0, 255),
                 Property("b", kPropertyTypeInteger, 0, 255),
+                Property("index", kPropertyTypeInteger, -1, -1, 11),
+                Property("count", kPropertyTypeInteger, 0, 0, 12),
             }),
             [this](const PropertyList& props) -> ReturnValue {
                 uint8_t r = props["r"].value<int>();
                 uint8_t g = props["g"].value<int>();
                 uint8_t b = props["b"].value<int>();
-                uint16_t color = Rgb888To565(r, g, b);
+                int index = props["index"].value<int>();
+                int count = props["count"].value<int>();
+                int first = index < 0 ? 0 : index;
+                int led_count = count;
+                if (led_count == 0) led_count = index < 0 ? 12 : 1;
+                if (first + led_count > 12) {
+                    ESP_LOGW(TAG, "MCP LED range out of bounds: index=%d count=%d", index, count);
+                    return false;
+                }
+
                 uint16_t colors[12];
-                for (int i = 0; i < 12; i++) colors[i] = color;
+                memcpy(colors, led_colors_, sizeof(colors));
+                uint16_t color = Rgb888To565(r, g, b);
+                for (int i = first; i < first + led_count; ++i) colors[i] = color;
                 Py32SetLedFrame(colors, 12);
                 led_manual_ = true;
-                ESP_LOGI(TAG, "MCP set LED color: r=%d g=%d b=%d", r, g, b);
+                ESP_LOGI(TAG, "MCP set LED color: r=%d g=%d b=%d index=%d count=%d",
+                         r, g, b, index, led_count);
                 return true;
             });
         mcp.AddTool("self.led.turn_off",
@@ -2147,7 +2210,7 @@ private:
                 EnterWifiConfigMode();
                 return;
             }
-            app.ToggleChatState();
+            SendUserMessage("主人点了屏幕");
         }
 
         if (touch_point.num > 0 && !was_touched) {
@@ -2182,7 +2245,7 @@ private:
                 if (held >= PET_TOUCH_MS && touch_total_move >= PET_MOVE_THRESHOLD_PX) {
                     pet_triggered = true;
                     static_cast<M5StackAvatarDisplay*>(display_)->OnPetted();
-                    SendUserMessage("（主人摸了摸小智的头）");
+                    SendUserMessage("主人摸了摸头");
                 }
             }
         }

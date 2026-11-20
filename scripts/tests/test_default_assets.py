@@ -1,15 +1,18 @@
 import json
+import struct
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 from scripts.build_default_assets import (
+    build_assets_integrated,
     build_multinet_model_info,
     generate_index_json,
     pack_assets_simple,
     read_custom_wake_word_from_sdkconfig,
 )
-from scripts.verify_default_assets import verify_default_assets
+from scripts.verify_default_assets import read_asset_files, verify_default_assets
 
 
 class DefaultAssetsWakeWordTest(unittest.TestCase):
@@ -78,6 +81,54 @@ class DefaultAssetsWakeWordTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "do not match sdkconfig"):
                 verify_default_assets(str(sdkconfig), str(output_path))
+
+    def test_generated_assets_include_full_face_emotes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            emoji_dir = root / "emojis"
+            emoji_dir.mkdir()
+            (emoji_dir / "happy.png").write_bytes(b"previous happy asset")
+            output_path = root / "generated_assets.bin"
+
+            self.assertTrue(
+                build_assets_integrated(
+                    [], [], None, str(emoji_dir), None, str(output_path),
+                    full_face_emotes=True,
+                )
+            )
+            packaged_files = read_asset_files(output_path)
+            index = json.loads(packaged_files["index.json"].decode("utf-8"))
+            packaged_emotions = {
+                entry["name"]: entry["file"] for entry in index["emoji_collection"]
+            }
+            emotion_names = {
+                "neutral", "happy", "sad", "angry", "surprised",
+                "thinking", "sleepy", "listening", "speaking",
+            }
+
+            self.assertEqual(set(packaged_emotions), emotion_names)
+            self.assertEqual(len(index["emoji_collection"]), len(emotion_names))
+            for filename in set(packaged_emotions.values()):
+                image = packaged_files[filename]
+                self.assertEqual(image[:8], b"\x89PNG\r\n\x1a\n")
+                self.assertEqual(image[24:29], b"\x08\x06\x00\x00\x00")
+                width, height = struct.unpack_from(">II", image, 16)
+                offset = 8
+                image_data = bytearray()
+                while offset < len(image):
+                    chunk_size = struct.unpack_from(">I", image, offset)[0]
+                    chunk_type = image[offset + 4:offset + 8]
+                    chunk_data = image[offset + 8:offset + 8 + chunk_size]
+                    chunk_crc = struct.unpack_from(">I", image, offset + 8 + chunk_size)[0]
+                    self.assertEqual(
+                        chunk_crc, zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF
+                    )
+                    if chunk_type == b"IDAT":
+                        image_data.extend(chunk_data)
+                    offset += chunk_size + 12
+                    if chunk_type == b"IEND":
+                        break
+                self.assertEqual(len(zlib.decompress(image_data)), height * (width * 4 + 1))
 
 
 if __name__ == "__main__":
