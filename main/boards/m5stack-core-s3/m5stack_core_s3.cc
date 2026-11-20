@@ -1407,7 +1407,6 @@ private:
     i2c_master_bus_handle_t si12t_bus_ = nullptr;
     i2c_master_dev_handle_t si12t_dev_ = nullptr;
     TaskHandle_t si12t_task_ = nullptr;
-    uint8_t si12t_last_state_ = 0;
     bool servo_ok_ = false;
     bool low_batt_warned_ = false;
 
@@ -1704,10 +1703,10 @@ private:
 
     void Si12tLoop() {
         vTaskDelay(pdMS_TO_TICKS(12000));  // wait for chip FTC (10s fast calibration)
-        si12t_last_state_ = si12t_dev_ ? Si12tReadReg(0x10) : 0;
 
         int64_t last_touch_time = 0;
-        const int64_t TOUCH_COOLDOWN_US = 5000000;  // 5 秒冷却
+        uint8_t hold_ticks[3] = {};
+        const int64_t TOUCH_COOLDOWN_US = 10000000;  // 10 秒冷却
         while (true) {
             vTaskDelay(pdMS_TO_TICKS(100));
             if (!si12t_dev_) continue;
@@ -1715,8 +1714,14 @@ private:
             int64_t now = esp_timer_get_time();
             for (int zone = 0; zone < 3; zone++) {
                 uint8_t cur = (out >> (zone * 2)) & 0x03;
-                uint8_t prev = (si12t_last_state_ >> (zone * 2)) & 0x03;
-                if (cur != 0 && prev == 0 && (now - last_touch_time > TOUCH_COOLDOWN_US)) {
+                if (cur == 0) {
+                    hold_ticks[zone] = 0;
+                    continue;
+                }
+                if (hold_ticks[zone] < 3) {
+                    ++hold_ticks[zone];
+                }
+                if (hold_ticks[zone] >= 3 && (now - last_touch_time > TOUCH_COOLDOWN_US)) {
                     // display = 屏幕展示的完整动作描写（带括号，作为场景旁白）
                     // tag    = 发给 LLM 的短动作标签（≤6 字），避开 detect.text 长度限制
                     struct TouchMsg { const char* display; const char* tag; };
@@ -1736,10 +1741,10 @@ private:
                     }
                     SendUserMessage(m.tag);
                     last_touch_time = now;
+                    hold_ticks[zone] = 0;
                     break;
                 }
             }
-            si12t_last_state_ = out;
         }
     }
 
