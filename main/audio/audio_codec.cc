@@ -33,6 +33,16 @@ void AudioCodec::Start() {
         ESP_LOGW(TAG, "Output volume value (%d) is too small, setting to default (10)", output_volume_);
         output_volume_ = 10;
     }
+    // 音量上限：避免突然爆音把设备/耳朵震到（源 2026-11-21 要求）
+    // 开机音量：太小的旧值直接抬到 85（源反馈设备音量偏小），上限 90
+    if (output_volume_ < 85) {
+        ESP_LOGW(TAG, "Output volume %d too low, raising to 85", output_volume_);
+        output_volume_ = 85;
+    }
+    if (output_volume_ > 90) {
+        ESP_LOGW(TAG, "Output volume %d too loud, clamping to 90", output_volume_);
+        output_volume_ = 90;
+    }
 
     ESP_LOGI(TAG, "Audio codec started");
 }
