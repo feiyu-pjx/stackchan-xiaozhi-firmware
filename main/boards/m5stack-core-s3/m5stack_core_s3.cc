@@ -2195,8 +2195,16 @@ private:
                 int64_t held = now - touch_start_time;
                 if (held >= PET_TOUCH_MS && touch_total_move >= PET_MOVE_THRESHOLD_PX) {
                     pet_triggered = true;
+                    // 摸头 = 真实互动：表情变开心 + 轻轻点头 + 若在待机就唤起对话
                     static_cast<M5StackAvatarDisplay*>(display_)->OnPetted();
-                    SendUserMessage("（主人摸了摸小智的头）");
+                    if (display_) { display_->SetEmotion("happy"); }
+                    servo_.Nod();
+                    {
+                        auto& app = Application::GetInstance();
+                        if (app.GetDeviceState() == kDeviceStateIdle) {
+                            app.ToggleChatState();  // 被摸一下就醒过来听你说话
+                        }
+                    }
                 }
             }
         }
