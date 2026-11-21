@@ -1850,6 +1850,11 @@ private:
     // 50ms 一次：呼吸 / 脉冲 / 彩虹
     void StepLedAnim() {
         if (!py32_dev_ || led_manual_) return;
+        // 说话时不刷灯带：I2C 让给音频链路，避免声音卡顿
+        {
+            auto* d = static_cast<M5StackAvatarDisplay*>(display_);
+            if (d && d->IsSpeaking()) return;
+        }
         led_phase_ += 0.08f;
         if (led_phase_ > 6.2831853f) led_phase_ -= 6.2831853f;
         uint16_t colors[12];
@@ -1919,7 +1924,7 @@ private:
         a.callback = [](void* arg) { static_cast<M5StackCoreS3Board*>(arg)->StepLedAnim(); };
         a.arg = this;
         a.name = "led_anim";
-        if (esp_timer_create(&a, &led_timer_) == ESP_OK) esp_timer_start_periodic(led_timer_, 150000);
+        if (esp_timer_create(&a, &led_timer_) == ESP_OK) esp_timer_start_periodic(led_timer_, 250000);
     }
 
     // ---- SI12T 3 区触摸（在主 I2C 总线 0x68 上）----
