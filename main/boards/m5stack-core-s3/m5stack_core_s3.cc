@@ -1711,10 +1711,26 @@ private:
                     const auto& m = msgs[esp_random() % 7];
                     ESP_LOGI(TAG, "SI12T touch -> pet");
                     // 摸头 = 真互动：开心表情 + 轻轻点头 + 待机时醒过来听
-                    if (display_) { display_->SetEmotion("happy"); }
-                    servo_.Nod();
-                    // 让她开口：把“被摸头”这件事作为一句提示发给她，她自己回话
-                    Application::GetInstance().SendUserText("（他伸手摸了摸你的头）");
+                    // 每次摸头随机一种反应：表情 + 动作 + 提示词都从池子里挑
+                    static const char* kPetEmotions[] = {"happy", "loving", "embarrassed", "surprised", "laughing"};
+                    static const char* kPetPrompts[] = {
+                        "（他伸手摸了摸你的头）",
+                        "（他揉了揉你的头顶）",
+                        "（他轻轻拍了拍你的脑袋）",
+                        "（他托着你的脸看了看）",
+                        "（他把你按在怀里蹭了蹭）",
+                    };
+                    const int nE = sizeof(kPetEmotions) / sizeof(kPetEmotions[0]);
+                    const int nP = sizeof(kPetPrompts) / sizeof(kPetPrompts[0]);
+                    if (display_) { display_->SetEmotion(kPetEmotions[esp_random() % nE]); }
+                    {
+                        uint32_t r = esp_random() % 3;
+                        if (r == 0) servo_.Nod();
+                        else if (r == 1) servo_.Shake();
+                        else servo_.Tilt();
+                    }
+                    // 让她开口：把这次“被摸”的经过发给她，她自己回话
+                    Application::GetInstance().SendUserText(kPetPrompts[esp_random() % nP]);
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
