@@ -1641,6 +1641,13 @@ private:
         for (uint8_t reg = 0x02; reg <= 0x07; reg++) {
             Si12tWriteReg(reg, 0xCC);  // M5Stack BSP recommended, better EMI resistance
         }
+        // SI12T DIAG：确认芯片真的在（add_device 成功不代表存在）
+        {
+            uint8_t id0 = Si12tReadReg(0x00);
+            uint8_t id1 = Si12tReadReg(0x01);
+            uint8_t st  = Si12tReadReg(0x10);
+            ESP_LOGW(TAG, "SI12T DIAG id0=0x%02X id1=0x%02X state=0x%02X", id0, id1, st);
+        }
         ESP_LOGI(TAG, "SI12T 3-zone touch initialized");
 
         xTaskCreatePinnedToCore(Si12tTaskFunc, "si12t", 3072, this, 1, &si12t_task_, 1);
@@ -1677,6 +1684,11 @@ private:
             if (!si12t_dev_) continue;
             uint8_t out = Si12tReadReg(0x10);
             int64_t now = esp_timer_get_time();
+            static int64_t last_diag = 0;
+            if (now - last_diag > 2000000) {
+                last_diag = now;
+                ESP_LOGW(TAG, "SI12T raw=0x%02X", out);
+            }
             for (int zone = 0; zone < 3; zone++) {
                 uint8_t cur = (out >> (zone * 2)) & 0x03;
                 uint8_t prev = (si12t_last_state_ >> (zone * 2)) & 0x03;
