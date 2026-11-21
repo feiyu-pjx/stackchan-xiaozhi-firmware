@@ -1,6 +1,7 @@
 #include "wifi_board.h"
 #include "cores3_audio_codec.h"
 #include "display/lcd_display.h"
+#include "assets.h"
 #include "application.h"
 #include "config.h"
 #include "power_save_timer.h"
@@ -589,7 +590,61 @@ private:
         Draw();
     }
 
+    // ---- 图片脸（社区资产：320x240 RGB565，存在 assets 分区）----
+    const void* face_px_ = nullptr;
+    lv_image_dsc_t face_dsc_{};
+    bool has_face_ = false;
+
+    bool LoadFaceByEmotion(const char* emotion) {
+        const char* name = nullptr;
+        if (!emotion) name = "face_neutral.bin";
+        else if (!strcmp(emotion, "neutral")) name = "face_neutral.bin";
+        else if (!strcmp(emotion, "happy")) name = "face_happy.bin";
+        else if (!strcmp(emotion, "laughing") || !strcmp(emotion, "funny")) name = "face_laugh.bin";
+        else if (!strcmp(emotion, "loving") || !strcmp(emotion, "kissy") || !strcmp(emotion, "relaxed"))
+            name = "face_loving.bin";
+        else if (!strcmp(emotion, "sleepy") || !strcmp(emotion, "thinking") || !strcmp(emotion, "confused"))
+            name = "face_sleepy.bin";
+        else if (!strcmp(emotion, "surprised") || !strcmp(emotion, "shocked")) name = "face_surprised.bin";
+        else if (!strcmp(emotion, "embarrassed") || !strcmp(emotion, "cool") || !strcmp(emotion, "confident"))
+            name = "face_gentle.bin";
+        else if (!strcmp(emotion, "silly") || !strcmp(emotion, "winking")) name = "face_blink.bin";
+        else name = "face_neutral.bin";
+
+        void* ptr = nullptr;
+        size_t sz = 0;
+        if (!Assets::GetInstance().GetAssetData(name, ptr, sz) || sz < 320 * 240 * 2 || !ptr) {
+            if (has_face_) ESP_LOGW("Avatar", "face asset %s missing, keep previous", name);
+            return false;
+        }
+        face_px_ = ptr;
+        memset(&face_dsc_, 0, sizeof(face_dsc_));
+        face_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        face_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+        face_dsc_.header.w = 320;
+        face_dsc_.header.h = 240;
+        face_dsc_.data_size = sz;
+        face_dsc_.data = (const uint8_t*)ptr;
+        has_face_ = true;
+        return true;
+    }
+
     void Draw() {
+        if (!canvas_) return;
+        if (has_face_) {
+            const lv_color_t bg = lv_color_make(0x00, 0x00, 0x00);
+            lv_canvas_fill_bg(canvas_, bg, LV_OPA_COVER);
+            lv_layer_t layer;
+            lv_canvas_init_layer(canvas_, &layer);
+            lv_draw_image_dsc_t d;
+            lv_draw_image_dsc_init(&d);
+            d.src = &face_dsc_;
+            lv_area_t area;
+            area.x1 = 0; area.y1 = 0; area.x2 = 319; area.y2 = 239;
+            lv_draw_image(&layer, &d, &area);
+            lv_canvas_finish_layer(canvas_, &layer);
+            return;
+        }
         if (!canvas_) return;
         const lv_color_t bg = lv_color_make(0x00, 0x00, 0x00);
         const lv_color_t fg = lv_color_make(0xFF, 0xFF, 0xFF);
@@ -1095,6 +1150,7 @@ public:
         DisplayLockGuard lock(this);
         HideEmojiBoxLocked();
         if (!avatar_.IsReady()) return;
+        avatar_.LoadFaceByEmotion(emotion);
         avatar_.SetExpression(shizhou_avatar::MapEmotion(emotion));
         avatar_.SetOverlay(shizhou_avatar::OverlayFor(emotion));
         if (emotion && strcmp(emotion, "sleepy") == 0) {
