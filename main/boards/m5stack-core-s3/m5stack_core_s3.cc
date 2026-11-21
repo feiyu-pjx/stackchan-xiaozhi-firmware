@@ -2027,7 +2027,7 @@ private:
                     if (display_) static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
                     servo_.Nuzzle();
                     // 走 HTTP 事件告诉桥，不碰语音通道
-                    PostBodyEvent("他摸了摸头");
+                    PostBodyEvent("（他走过来摸了摸你的头）");
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
