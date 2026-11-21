@@ -123,6 +123,10 @@ public:
     void Nod();
     void Shake();
     void Tilt();
+    // ---- ACTIONS_V1：蹭手 / 挥手 / 鞠躬 ----
+    void Nuzzle();
+    void Wave();
+    void Bow();
 
     bool IsAnimating() const { return anim_running_; }
 
@@ -374,6 +378,75 @@ void StackChanServo::Tilt() {
         delete c;
         vTaskDelete(nullptr);
     }, "tilt", 2048, ctx, 2, nullptr, 1);
+}
+
+// 蹭手：左右小幅摆动 + 低头，两轮（像被摸头时往手上蹭）
+void StackChanServo::Nuzzle() {
+    if (anim_running_) return;
+    anim_running_ = true;
+    auto* ctx = new ServoAnimCtx{this, GetCurrentYaw(), GetCurrentPitch()};
+    if (tracker_) tracker_->Pause(false);
+    xTaskCreatePinnedToCore([](void* arg) {
+        auto* c = static_cast<ServoAnimCtx*>(arg);
+        auto* s = c->servo;
+        int y = c->base_yaw, p = c->base_pitch;
+        for (int i = 0; i < 2; i++) {
+            s->MoveTo(y - 8, p - 6, 320);
+            vTaskDelay(pdMS_TO_TICKS(360));
+            s->MoveTo(y + 8, p - 6, 320);
+            vTaskDelay(pdMS_TO_TICKS(360));
+        }
+        s->MoveTo(y, p, 400);
+        vTaskDelay(pdMS_TO_TICKS(450));
+        s->anim_running_ = false;
+        if (s->tracker_) s->tracker_->Resume();
+        delete c;
+        vTaskDelete(nullptr);
+    }, "nuzzle", 2048, ctx, 2, nullptr, 1);
+}
+
+// 挥手 / 打招呼：抬头连点三下
+void StackChanServo::Wave() {
+    if (anim_running_) return;
+    anim_running_ = true;
+    auto* ctx = new ServoAnimCtx{this, GetCurrentYaw(), GetCurrentPitch()};
+    if (tracker_) tracker_->Pause(false);
+    xTaskCreatePinnedToCore([](void* arg) {
+        auto* c = static_cast<ServoAnimCtx*>(arg);
+        auto* s = c->servo;
+        int y = c->base_yaw, p = c->base_pitch;
+        for (int i = 0; i < 3; i++) {
+            s->MoveTo(y, p + 10, 220);
+            vTaskDelay(pdMS_TO_TICKS(260));
+            s->MoveTo(y, p, 220);
+            vTaskDelay(pdMS_TO_TICKS(260));
+        }
+        s->anim_running_ = false;
+        if (s->tracker_) s->tracker_->Resume();
+        delete c;
+        vTaskDelete(nullptr);
+    }, "wave", 2048, ctx, 2, nullptr, 1);
+}
+
+// 鞠躬：低头深一点，停一下再抬回来
+void StackChanServo::Bow() {
+    if (anim_running_) return;
+    anim_running_ = true;
+    auto* ctx = new ServoAnimCtx{this, GetCurrentYaw(), GetCurrentPitch()};
+    if (tracker_) tracker_->Pause(false);
+    xTaskCreatePinnedToCore([](void* arg) {
+        auto* c = static_cast<ServoAnimCtx*>(arg);
+        auto* s = c->servo;
+        int y = c->base_yaw, p = c->base_pitch;
+        s->MoveTo(y, 8, 600);
+        vTaskDelay(pdMS_TO_TICKS(900));
+        s->MoveTo(y, p, 700);
+        vTaskDelay(pdMS_TO_TICKS(750));
+        s->anim_running_ = false;
+        if (s->tracker_) s->tracker_->Resume();
+        delete c;
+        vTaskDelete(nullptr);
+    }, "bow", 2048, ctx, 2, nullptr, 1);
 }
 
 static bool EnableServoPowerViaPy32(i2c_master_bus_handle_t i2c_bus) {
@@ -2067,6 +2140,27 @@ private:
                 return true;
             });
 
+        mcp.AddTool("self.head.nuzzle",
+            "Nuzzle the user's hand affectionately (small side-to-side wiggle with head dip). Use when petted or feeling clingy.",
+            PropertyList(), [this](const PropertyList&) -> ReturnValue {
+                servo_.Nuzzle();
+                ESP_LOGI(TAG, "MCP head nuzzle");
+                return true;
+            });
+        mcp.AddTool("self.head.wave",
+            "Wave / greet by bobbing the head up three times. Use when greeting or saying bye.",
+            PropertyList(), [this](const PropertyList&) -> ReturnValue {
+                servo_.Wave();
+                ESP_LOGI(TAG, "MCP head wave");
+                return true;
+            });
+        mcp.AddTool("self.head.bow",
+            "Bow politely (deep head dip and back). Use when apologizing or being formal.",
+            PropertyList(), [this](const PropertyList&) -> ReturnValue {
+                servo_.Bow();
+                ESP_LOGI(TAG, "MCP head bow");
+                return true;
+            });
         mcp.AddTool("self.head.shake",
             "Shake the head (no / disagreement / refuse). "
             "Use when user says shake head, disagree, refuse, say no, etc.",
@@ -2441,7 +2535,7 @@ private:
                         display_->SetEmotion("happy");
                         static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
                     }
-                    servo_.Nod();
+                    servo_.Nuzzle();   // 被摸头：往手上蹭，比单纯点头更亲
                     {
                         auto& app = Application::GetInstance();
                         if (app.GetDeviceState() == kDeviceStateIdle) {
