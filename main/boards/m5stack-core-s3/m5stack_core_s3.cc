@@ -593,6 +593,7 @@ public:
     const void* face_px_ = nullptr;
     lv_image_dsc_t face_dsc_{};
     bool has_face_ = false;
+    bool face_dirty_ = true;   // 只有换表情时才重画整屏图片
 
     bool LoadFaceByEmotion(const char* emotion) {
         const char* name = nullptr;
@@ -625,12 +626,15 @@ public:
         face_dsc_.data_size = sz;
         face_dsc_.data = (const uint8_t*)ptr;
         has_face_ = true;
+        face_dirty_ = true;
         return true;
     }
 
     void Draw() {
         if (!canvas_) return;
         if (has_face_) {
+            if (!face_dirty_) return;   // 静止时别每帧重画，否则像 PPT
+            face_dirty_ = false;
             const lv_color_t bg = lv_color_make(0x00, 0x00, 0x00);
             lv_canvas_fill_bg(canvas_, bg, LV_OPA_COVER);
             lv_layer_t layer;
