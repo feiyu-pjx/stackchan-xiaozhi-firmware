@@ -2502,22 +2502,6 @@ public:
         avatar_display->SetLedUpdater([this](const char* emotion) {
             UpdateLedsFromEmotion(emotion);
         });
-        // EXPR_SHOWCASE：开机轮播一遍全部表情，用于人工检查哪些画得不对
-        xTaskCreatePinnedToCore([](void* arg) {
-            auto* board = static_cast<M5StackCoreS3Board*>(arg);
-            static const char* kNames[] = {
-                "neutral","happy","laughing","funny","sad","crying","angry","loving",
-                "embarrassed","surprised","shocked","thinking","confused","cool",
-                "confident","silly","winking","sleepy","relaxed","delicious","kissy"
-            };
-            vTaskDelay(pdMS_TO_TICKS(12000));
-            for (auto* nm : kNames) {
-                if (board->display_) board->display_->SetEmotion(nm);
-                vTaskDelay(pdMS_TO_TICKS(1400));
-            }
-            if (board->display_) board->display_->SetEmotion("neutral");
-            vTaskDelete(nullptr);
-        }, "expr_show", 3072, this, 1, nullptr, 1);
 
         InitializeFt6336TouchPad();
         InitializeBmi270();
