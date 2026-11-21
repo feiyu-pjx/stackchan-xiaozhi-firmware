@@ -2556,13 +2556,8 @@ private:
                 int64_t held = now - touch_start_time;
                 if (held >= PET_TOUCH_MS && touch_total_move >= PET_MOVE_THRESHOLD_PX) {
                     pet_triggered = true;
-                    // 摸头 = 真实互动：表情变开心 + 轻轻点头 + 若在待机就唤起对话
-                    static_cast<M5StackAvatarDisplay*>(display_)->OnPetted();
-                    if (display_) {
-                        display_->SetEmotion("happy");
-                        static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
-                    }
-                    servo_.Nuzzle();   // 被摸头：往手上蹭，比单纯点头更亲
+                    // 屏幕 = 摸脸：轻反应（害羞/喜欢 + 歪头），摸头那套留给头顶
+                    if (display_) display_->SetEmotion("embarrassed");
                     {
                         auto& app = Application::GetInstance();
                         if (app.GetDeviceState() == kDeviceStateIdle) {
@@ -2609,12 +2604,9 @@ private:
                 if (pending_single_release && (now - pending_single_release_time) <= DOUBLE_CLICK_MS) {
                     // 第二次短按落在窗口内 → 双击
                     pending_single_release = false;
-                    // 双击 = 摸头（开心表情 + 8 帧动画 + 蹭手），不再发旁白
-                    if (display_) {
-                        display_->SetEmotion("happy");
-                        static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
-                    }
-                    servo_.Nuzzle();
+                    // 双击 = 摸脸（轻反应）
+                    if (display_) display_->SetEmotion("loving");
+                    servo_.Tilt();
                 } else {
                     // 候选单击，等下一帧或下次按下判定
                     pending_single_release = true;
