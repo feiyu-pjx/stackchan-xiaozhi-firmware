@@ -2020,28 +2020,14 @@ private:
                     // 摸头 = 真互动：开心表情 + 轻轻点头 + 待机时醒过来听
                     // 每次摸头随机一种反应：表情 + 动作 + 提示词都从池子里挑
                     static const char* kPetEmotions[] = {"happy", "loving", "embarrassed", "surprised", "laughing"};
-                    // 注意：SendUserText 上限 24 字节（≈8 个汉字），超了会被丢弃
-                    static const char* kPetPrompts[] = {
-                        "他摸了摸头",
-                        "他揉了揉头顶",
-                        "他拍了拍脑袋",
-                        "他托着你的脸",
-                        "他蹭了蹭你",
-                    };
                     const int nE = sizeof(kPetEmotions) / sizeof(kPetEmotions[0]);
-                    const int nP = sizeof(kPetPrompts) / sizeof(kPetPrompts[0]);
                     if (display_) { display_->SetEmotion(kPetEmotions[esp_random() % nE]); }
                     // 摸头固定反应：8 帧动画 + 蹭手
                     if (display_) static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
                     servo_.Nuzzle();
-                    // 只在已经处于对话中时才告诉她自己被摸了；
-                    // 待机时发文本会新建对话通道 → 每摸一次重连一次
-                    {
-                        auto& app = Application::GetInstance();
-                        if (app.GetDeviceState() != kDeviceStateIdle) {
-                            app.SendUserText(kPetPrompts[esp_random() % nP]);
-                        }
-                    }
+                    // 不再经语音通道报“被摸”：SendUserText 在任何非 idle 状态都会
+                    // 关掉当前通道再重连（speaking→abort+re-wake、listening→close+re-wake），
+                    // 表现就是“摸一下就切换连接”。要让她知道，走桥的 HTTP 事件接口。
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
@@ -2488,12 +2474,9 @@ private:
     }
 
     static void SendUserMessage(const char* msg) {
-        if (!msg) return;
-        // 待机时绝不发文本：SendUserText 在 Idle 下会走 WakeWordInvoke 新建通道 → 表现为“摸一下/摇一下就连一次”
-        // 源的要求：只有唤醒词能开对话
-        auto& app = Application::GetInstance();
-        if (app.GetDeviceState() == kDeviceStateIdle) return;
-        app.SendUserText(msg);
+        (void)msg;
+        // 全部停用：SendUserText 只要状态不是 idle 就会关通道重连（见 application.cc 实现），
+        // 摇晃/抱起/摸头这些“身体事件”不该动用语音通道。源的要求：只有唤醒词能唤醒。
     }
 
     void PollTouchpad() {
