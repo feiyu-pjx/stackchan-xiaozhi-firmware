@@ -585,7 +585,82 @@ private:
             mouth_open_ = 0.0f;
         }
 
+        StepFrameAnim();
         Draw();
+    }
+
+public:
+    // ---- ANIM_FRAMES_V1：帧动画（240x180，居中显示）----
+    int anim_mode_ = 0;      // 0=静止 1=说话 2=摸头
+    int anim_idx_ = 0;
+    int anim_tick_ = 0;
+    int blink_wait_ = 80;    // 50ms/tick ≈ 4s
+    int blink_phase_ = 0;
+    int face_w_ = 320, face_h_ = 240, face_x_ = 0, face_y_ = 0;
+
+    void LoadFaceAsset(const char* name) {
+        void* ptr = nullptr; size_t sz = 0;
+        if (!Assets::GetInstance().GetAssetData(name, ptr, sz) || !ptr || sz < 240 * 180 * 2) return;
+        face_px_ = ptr;
+        memset(&face_dsc_, 0, sizeof(face_dsc_));
+        face_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        face_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+        face_dsc_.header.w = 240;
+        face_dsc_.header.h = 180;
+        face_dsc_.data_size = sz;
+        face_dsc_.data = (const uint8_t*)ptr;
+        face_w_ = 240; face_h_ = 180; face_x_ = 40; face_y_ = 30;
+        has_face_ = true;
+        face_dirty_ = true;
+    }
+
+    void SetAnimMode(int m) { anim_mode_ = m; anim_idx_ = 0; anim_tick_ = 0; }
+
+    void StepFrameAnim() {
+        if (!has_face_) return;
+        // 说话时自动切嘴动（speaking_until_ms_ 由 SetChatMessage(assistant) 设置）
+        bool speaking = (speaking_until_ms_ != 0 && (int64_t)lv_tick_get() < speaking_until_ms_);
+        if (speaking && anim_mode_ != 2) {
+            if (++anim_tick_ >= 3) {
+                anim_tick_ = 0;
+                anim_idx_ = (anim_idx_ + 1) % 3;
+                char n[20]; snprintf(n, sizeof n, "f_talk%d.bin", anim_idx_ + 1);
+                LoadFaceAsset(n);
+            }
+            return;
+        }
+        if (anim_mode_ == 1) {   // 说话：嘴一开一合
+            if (++anim_tick_ >= 3) {
+                anim_tick_ = 0;
+                anim_idx_ = (anim_idx_ + 1) % 3;
+                char n[20]; snprintf(n, sizeof n, "f_talk%d.bin", anim_idx_ + 1);
+                LoadFaceAsset(n);
+            }
+            return;
+        }
+        if (anim_mode_ == 2) {   // 摸头：8 帧播完回 neutral
+            if (anim_tick_ == 0) {
+                char n[20]; snprintf(n, sizeof n, "f_pet%d.bin", anim_idx_);
+                LoadFaceAsset(n);
+            }
+            if (++anim_tick_ >= 2) {
+                anim_tick_ = 0;
+                if (++anim_idx_ >= 8) { anim_mode_ = 0; anim_idx_ = 0; LoadFaceAsset("f_neutral.bin"); }
+            }
+            return;
+        }
+        // 静止：定时眨眼
+        if (blink_phase_ == 0) {
+            if (--blink_wait_ <= 0) { blink_phase_ = 1; LoadFaceAsset("f_blink1.bin"); }
+            return;
+        }
+        if (++anim_tick_ >= 2) {
+            anim_tick_ = 0;
+            blink_phase_++;
+            if (blink_phase_ == 2) LoadFaceAsset("f_blink2.bin");
+            else if (blink_phase_ == 3) LoadFaceAsset("f_blink1.bin");
+            else { blink_phase_ = 0; LoadFaceAsset("f_neutral.bin"); blink_wait_ = 60 + (rand() % 80); }
+        }
     }
 
 public:
@@ -623,6 +698,7 @@ public:
         face_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
         face_dsc_.header.w = 320;
         face_dsc_.header.h = 240;
+        face_w_ = 320; face_h_ = 240; face_x_ = 0; face_y_ = 0;
         face_dsc_.data_size = sz;
         face_dsc_.data = (const uint8_t*)ptr;
         has_face_ = true;
@@ -643,7 +719,8 @@ public:
             lv_draw_image_dsc_init(&d);
             d.src = &face_dsc_;
             lv_area_t area;
-            area.x1 = 0; area.y1 = 0; area.x2 = 319; area.y2 = 239;
+            area.x1 = face_x_; area.y1 = face_y_;
+            area.x2 = face_x_ + face_w_ - 1; area.y2 = face_y_ + face_h_ - 1;
             lv_draw_image(&layer, &d, &area);
             lv_canvas_finish_layer(canvas_, &layer);
             return;
@@ -1148,12 +1225,20 @@ public:
         if (servo_) servo_->Tilt();
     }
 
+    void PlayPetAnim() { avatar_.SetAnimMode(2); }   // 摸头 8 帧动画
+
     void SetEmotion(const char* emotion) override {
         SpiLcdDisplay::SetEmotion(emotion);
         DisplayLockGuard lock(this);
         HideEmojiBoxLocked();
         if (!avatar_.IsReady()) return;
-        avatar_.LoadFaceByEmotion(emotion);
+        if (emotion && strcmp(emotion, "speaking") == 0) {
+            avatar_.LoadFaceAsset("f_talk1.bin");
+            avatar_.SetAnimMode(1);          // 说话：嘴一开一合
+        } else {
+            avatar_.SetAnimMode(0);
+            avatar_.LoadFaceByEmotion(emotion);
+        }
         avatar_.SetExpression(shizhou_avatar::MapEmotion(emotion));
         avatar_.SetOverlay(shizhou_avatar::OverlayFor(emotion));
         if (emotion && strcmp(emotion, "sleepy") == 0) {
@@ -2307,7 +2392,10 @@ private:
                     pet_triggered = true;
                     // 摸头 = 真实互动：表情变开心 + 轻轻点头 + 若在待机就唤起对话
                     static_cast<M5StackAvatarDisplay*>(display_)->OnPetted();
-                    if (display_) { display_->SetEmotion("happy"); }
+                    if (display_) {
+                        display_->SetEmotion("happy");
+                        static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
+                    }
                     servo_.Nod();
                     {
                         auto& app = Application::GetInstance();
