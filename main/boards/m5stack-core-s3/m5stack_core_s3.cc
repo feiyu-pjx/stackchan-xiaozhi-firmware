@@ -2582,12 +2582,7 @@ private:
                     pet_triggered = true;
                     // 屏幕 = 摸脸：轻反应（害羞/喜欢 + 歪头），摸头那套留给头顶
                     if (display_) display_->SetEmotion("embarrassed");
-                    {
-                        auto& app = Application::GetInstance();
-                        if (app.GetDeviceState() == kDeviceStateIdle) {
-                            app.ToggleChatState();  // 被摸一下就醒过来听你说话
-                        }
-                    }
+                    // 不再主动开对话：只有唤醒词能唤醒（源的要求）
                 }
             }
         }
