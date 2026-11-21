@@ -590,6 +590,7 @@ private:
         Draw();
     }
 
+public:
     // ---- 图片脸（社区资产：320x240 RGB565，存在 assets 分区）----
     const void* face_px_ = nullptr;
     lv_image_dsc_t face_dsc_{};
@@ -2514,7 +2515,7 @@ public:
             }
             if (board->display_) board->display_->SetEmotion("neutral");
             vTaskDelete(nullptr);
-        }, "expr_show", 3072, this, 1, nullptr);
+        }, "expr_show", 3072, this, 1, nullptr, 1);
 
         InitializeFt6336TouchPad();
         InitializeBmi270();
