@@ -77,8 +77,8 @@ public:
         args.name = "servo_idle";
         args.skip_unhandled_events = true;
         esp_timer_create(&args, &idle_timer_);
-        esp_timer_start_periodic(idle_timer_, 4000000);
-        scan_running_ = true;
+        // 待机保持静止：不启动空闲随机转头（源 2026-11-21 反馈「静待时头一直在动」）
+        scan_running_ = false;
         return true;
     }
 
@@ -107,10 +107,8 @@ public:
     }
 
     void ResumeScan() {
-        if (!scan_running_ && idle_timer_) {
-            esp_timer_start_periodic(idle_timer_, 4000000);
-            scan_running_ = true;
-        }
+        // 保持静止：不再恢复随机转头（人脸追踪仍可用）
+        (void)idle_timer_;
     }
 
     void Center() { MoveTo(0, 30, 600); }
