@@ -12,6 +12,7 @@
 
 #include <esp_log.h>
 #include <cmath>
+#include <esp_http_client.h>
 #include <esp_heap_caps.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_io.h>
@@ -2025,9 +2026,8 @@ private:
                     // 摸头固定反应：8 帧动画 + 蹭手
                     if (display_) static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
                     servo_.Nuzzle();
-                    // 不再经语音通道报“被摸”：SendUserText 在任何非 idle 状态都会
-                    // 关掉当前通道再重连（speaking→abort+re-wake、listening→close+re-wake），
-                    // 表现就是“摸一下就切换连接”。要让她知道，走桥的 HTTP 事件接口。
+                    // 走 HTTP 事件告诉桥，不碰语音通道
+                    PostBodyEvent("他摸了摸头");
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
@@ -2471,6 +2471,32 @@ private:
     static const char* PickRandom(const std::vector<const char*>& pool) {
         if (pool.empty()) return nullptr;
         return pool[esp_random() % pool.size()];
+    }
+
+    // ---- DEVICE_EVENT_V1：身体事件走 HTTP，不碰语音通道（否则会关通道重连）----
+    void PostBodyEvent(const char* text) {
+        if (!text || !text[0]) return;
+        char* copy = strdup(text);
+        if (!copy) return;
+        xTaskCreatePinnedToCore([](void* arg) {
+            char* t = static_cast<char*>(arg);
+            char body[160];
+            snprintf(body, sizeof body, "{\"type\":\"body\",\"text\":\"%s\"}", t);
+            esp_http_client_config_t cfg = {};
+            cfg.url = "https://121.196.150.116.sslip.io/voice-api/device/event";
+            cfg.method = HTTP_METHOD_POST;
+            cfg.timeout_ms = 6000;
+            esp_http_client_handle_t cli = esp_http_client_init(&cfg);
+            if (cli) {
+                esp_http_client_set_header(cli, "content-type", "application/json");
+                esp_http_client_set_post_field(cli, body, strlen(body));
+                esp_err_t err = esp_http_client_perform(cli);
+                if (err != ESP_OK) ESP_LOGW(TAG, "device/event 上报失败: %d", (int)err);
+                esp_http_client_cleanup(cli);
+            }
+            free(t);
+            vTaskDelete(nullptr);
+        }, "body_event", 4096, copy, 3, nullptr, 1);
     }
 
     static void SendUserMessage(const char* msg) {
