@@ -201,7 +201,7 @@ private:
     static void TaskFunc(void* arg) {
         auto* self = static_cast<FaceTracker*>(arg);
         while (true) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(150));
             if (self->paused_ || !self->camera_->IsOk()) continue;
             self->Track();
         }
@@ -1671,7 +1671,7 @@ private:
         bool last_valid = false;
 
         while (true) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(150));
             if (!bmi_handle_) continue;
 
             struct bmi2_sens_data accel;
@@ -1899,7 +1899,7 @@ private:
         a.callback = [](void* arg) { static_cast<M5StackCoreS3Board*>(arg)->StepLedAnim(); };
         a.arg = this;
         a.name = "led_anim";
-        if (esp_timer_create(&a, &led_timer_) == ESP_OK) esp_timer_start_periodic(led_timer_, 50000);
+        if (esp_timer_create(&a, &led_timer_) == ESP_OK) esp_timer_start_periodic(led_timer_, 150000);
     }
 
     // ---- SI12T 3 区触摸（在主 I2C 总线 0x68 上）----
@@ -1967,7 +1967,7 @@ private:
         const int TOUCH_HOLD_TICKS = 3;              // 连续 3 次（约 300ms）按住才算真碰
         static int hold_ticks[3] = {0, 0, 0};
         while (true) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(150));
             if (!si12t_dev_) continue;
             uint8_t out = Si12tReadReg(0x10);
             // 0x3F = 三区同时报按下：芯片悬空/未校准时的噪声值，直接丢弃
