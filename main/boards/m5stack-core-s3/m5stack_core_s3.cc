@@ -1769,12 +1769,13 @@ private:
                     // 摸头 = 真互动：开心表情 + 轻轻点头 + 待机时醒过来听
                     // 每次摸头随机一种反应：表情 + 动作 + 提示词都从池子里挑
                     static const char* kPetEmotions[] = {"happy", "loving", "embarrassed", "surprised", "laughing"};
+                    // 注意：SendUserText 上限 24 字节（≈8 个汉字），超了会被丢弃
                     static const char* kPetPrompts[] = {
-                        "（他伸手摸了摸你的头）",
-                        "（他揉了揉你的头顶）",
-                        "（他轻轻拍了拍你的脑袋）",
-                        "（他托着你的脸看了看）",
-                        "（他把你按在怀里蹭了蹭）",
+                        "他摸了摸头",
+                        "他揉了揉头顶",
+                        "他拍了拍脑袋",
+                        "他托着你的脸",
+                        "他蹭了蹭你",
                     };
                     const int nE = sizeof(kPetEmotions) / sizeof(kPetEmotions[0]);
                     const int nP = sizeof(kPetPrompts) / sizeof(kPetPrompts[0]);
