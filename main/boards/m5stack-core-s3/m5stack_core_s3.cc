@@ -1713,12 +1713,8 @@ private:
                     // 摸头 = 真互动：开心表情 + 轻轻点头 + 待机时醒过来听
                     if (display_) { display_->SetEmotion("happy"); }
                     servo_.Nod();
-                    {
-                        auto& app = Application::GetInstance();
-                        if (app.GetDeviceState() == kDeviceStateIdle) {
-                            app.ToggleChatState();
-                        }
-                    }
+                    // 让她开口：把“被摸头”这件事作为一句提示发给她，她自己回话
+                    Application::GetInstance().SendUserText("（他伸手摸了摸你的头）");
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
