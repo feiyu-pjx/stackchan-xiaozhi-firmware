@@ -1709,11 +1709,16 @@ private:
                         {"（主人理了理小智的头发）",       "主人理了理头发"},
                     };
                     const auto& m = msgs[esp_random() % 7];
-                    ESP_LOGI(TAG, "SI12T touch -> %s | tag=%s", m.display, m.tag);
-                    if (auto* disp = GetDisplay()) {
-                        disp->SetChatMessage("user", m.display);
+                    ESP_LOGI(TAG, "SI12T touch -> pet");
+                    // 摸头 = 真互动：开心表情 + 轻轻点头 + 待机时醒过来听
+                    if (display_) { display_->SetEmotion("happy"); }
+                    servo_.Nod();
+                    {
+                        auto& app = Application::GetInstance();
+                        if (app.GetDeviceState() == kDeviceStateIdle) {
+                            app.ToggleChatState();
+                        }
                     }
-                    SendUserMessage(m.tag);
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
