@@ -1883,7 +1883,8 @@ private:
                 } else if (now - listen_since > 20000000) {
                     listen_since = 0;
                     ESP_LOGW(TAG, "listening watchdog: 20s timeout -> idle");
-                    app.ToggleChatState();
+                    // 必须回主任务执行：esp_timer 回调里直接关通道会崩（真机重启过）
+                    app.Schedule([]() { Application::GetInstance().ToggleChatState(); });
                 }
             } else {
                 listen_since = 0;
