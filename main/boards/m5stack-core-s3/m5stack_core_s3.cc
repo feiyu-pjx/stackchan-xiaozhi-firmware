@@ -13,6 +13,7 @@
 #include <esp_log.h>
 #include <cmath>
 #include <esp_http_client.h>
+#include <esp_crt_bundle.h>
 #include <esp_heap_caps.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_io.h>
@@ -2486,6 +2487,7 @@ private:
             cfg.url = "https://121.196.150.116.sslip.io/voice-api/device/event";
             cfg.method = HTTP_METHOD_POST;
             cfg.timeout_ms = 6000;
+            cfg.crt_bundle_attach = esp_crt_bundle_attach;   // 不挂证书链会 0x7002 连接失败
             esp_http_client_handle_t cli = esp_http_client_init(&cfg);
             if (cli) {
                 esp_http_client_set_header(cli, "content-type", "application/json");
