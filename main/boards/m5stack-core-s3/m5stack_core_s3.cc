@@ -1872,6 +1872,23 @@ private:
 
     // 说话时轻微晃头：300ms 一次，yaw ±2°、pitch ∓1°，幅度很小
     void HeadSwayTick() {
+        // 兜底：卡在 listening 超过 20 秒就自己回待机（否则唤醒词不再响应）
+        {
+            static int64_t listen_since = 0;
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() == kDeviceStateListening) {
+                int64_t now = esp_timer_get_time();
+                if (listen_since == 0) {
+                    listen_since = now;
+                } else if (now - listen_since > 20000000) {
+                    listen_since = 0;
+                    ESP_LOGW(TAG, "listening watchdog: 20s timeout -> idle");
+                    app.ToggleChatState();
+                }
+            } else {
+                listen_since = 0;
+            }
+        }
         if (servo_.IsAnimating()) return;
         auto* disp = static_cast<M5StackAvatarDisplay*>(display_);
         if (!disp || !disp->IsSpeaking()) return;
