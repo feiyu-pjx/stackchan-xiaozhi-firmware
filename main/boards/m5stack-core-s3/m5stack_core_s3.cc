@@ -2471,8 +2471,11 @@ private:
 
     static void SendUserMessage(const char* msg) {
         if (!msg) return;
-        // SendUserText 内部处理状态分流：Idle 走 WakeWord 建 channel，对话中走 SendWakeWordDetected 不打断
-        Application::GetInstance().SendUserText(msg);
+        // 待机时绝不发文本：SendUserText 在 Idle 下会走 WakeWordInvoke 新建通道 → 表现为“摸一下/摇一下就连一次”
+        // 源的要求：只有唤醒词能开对话
+        auto& app = Application::GetInstance();
+        if (app.GetDeviceState() == kDeviceStateIdle) return;
+        app.SendUserText(msg);
     }
 
     void PollTouchpad() {
