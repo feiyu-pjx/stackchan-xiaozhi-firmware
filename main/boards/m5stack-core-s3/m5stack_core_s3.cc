@@ -11,6 +11,7 @@
 #include "notify_http_server.h"
 
 #include <esp_log.h>
+#include <cmath>
 #include <esp_heap_caps.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_io.h>
@@ -1506,6 +1507,11 @@ private:
     // ---- PY32 持久 I2C 设备句柄（控 LED + 其他扩展）----
     i2c_master_dev_handle_t py32_dev_ = nullptr;
     bool led_manual_ = false;
+    // ---- LED_ANIM_V1：灯带动画（呼吸 / 脉冲 / 彩虹）----
+    uint8_t led_r_ = 60, led_g_ = 35, led_b_ = 10;
+    int led_mode_ = 0;      // 0=呼吸 1=脉冲 2=彩虹
+    float led_phase_ = 0.0f;
+    esp_timer_handle_t led_timer_ = nullptr;
     // ---- BMI270 (IMU) ----
     i2c_master_dev_handle_t bmi_i2c_dev_ = nullptr;
     struct bmi2_dev bmi_dev_storage_ = {};
@@ -1753,10 +1759,49 @@ private:
         else if (!strcmp(emotion, "silly")) { r=100; g=255; b=0; }
         else { r=60; g=35; b=10; }  // neutral 暖橙待机
 
-        uint16_t color = Rgb888To565(r, g, b);
+        led_r_ = r; led_g_ = g; led_b_ = b;
+        led_mode_ = 0;                                  // 默认呼吸
+        if (!strcmp(emotion ? emotion : "", "happy") || !strcmp(emotion ? emotion : "", "laughing") ||
+            !strcmp(emotion ? emotion : "", "funny") || !strcmp(emotion ? emotion : "", "loving")) {
+            led_mode_ = 2;                              // 开心/被爱：彩虹
+        } else if (!strcmp(emotion ? emotion : "", "angry")) {
+            led_mode_ = 1;                              // 生气：快闪脉冲
+        }
+        StepLedAnim();
+    }
+
+    // 50ms 一次：呼吸 / 脉冲 / 彩虹
+    void StepLedAnim() {
+        if (!py32_dev_ || led_manual_) return;
+        led_phase_ += 0.08f;
+        if (led_phase_ > 6.2831853f) led_phase_ -= 6.2831853f;
         uint16_t colors[12];
-        for (int i = 0; i < 12; i++) colors[i] = color;
+        if (led_mode_ == 2) {                            // 彩虹绕圈
+            for (int i = 0; i < 12; i++) {
+                float h = led_phase_ + i * 0.52f;
+                float rr = 0.5f + 0.5f * sinf(h);
+                float gg = 0.5f + 0.5f * sinf(h + 2.094f);
+                float bb = 0.5f + 0.5f * sinf(h + 4.188f);
+                colors[i] = Rgb888To565((uint8_t)(rr * 255), (uint8_t)(gg * 255), (uint8_t)(bb * 255));
+            }
+        } else {
+            float k;
+            if (led_mode_ == 1) k = 0.35f + 0.65f * (0.5f + 0.5f * sinf(led_phase_ * 3.0f));   // 快闪
+            else                k = 0.30f + 0.70f * (0.5f + 0.5f * sinf(led_phase_ * 0.6f));   // 慢呼吸
+            uint8_t r = (uint8_t)(led_r_ * k), g = (uint8_t)(led_g_ * k), b = (uint8_t)(led_b_ * k);
+            uint16_t c = Rgb888To565(r, g, b);
+            for (int i = 0; i < 12; i++) colors[i] = c;
+        }
         Py32SetLedFrame(colors, 12);
+    }
+
+    void StartLedAnim() {
+        if (led_timer_) return;
+        esp_timer_create_args_t a = {};
+        a.callback = [](void* arg) { static_cast<M5StackCoreS3Board*>(arg)->StepLedAnim(); };
+        a.arg = this;
+        a.name = "led_anim";
+        if (esp_timer_create(&a, &led_timer_) == ESP_OK) esp_timer_start_periodic(led_timer_, 50000);
     }
 
     // ---- SI12T 3 区触摸（在主 I2C 总线 0x68 上）----
@@ -2593,6 +2638,7 @@ public:
 
         InitializeFt6336TouchPad();
         InitializeBmi270();
+        StartLedAnim();
         InitializeSi12T();
         // Morning greeting + weather timer task removed; no-op call removed too
 
