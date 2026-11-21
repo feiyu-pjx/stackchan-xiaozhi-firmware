@@ -600,7 +600,7 @@ def read_custom_wake_word_from_sdkconfig(sdkconfig_path):
             elif 'CONFIG_WAKE_WORD_SENSITIVITY_MEDIUM=y' in line:
                 config_values['threshold'] = 35  # 35/100 = 0.35
             elif 'CONFIG_WAKE_WORD_SENSITIVITY_HIGH=y' in line:
-                config_values['threshold'] = 20  # 20/100 = 0.20
+                config_values['threshold'] = 15  # 15/100 = 0.15（对口音更宽容）
     
     # Return config only if custom wake word is enabled and required fields are present
     if (config_values.get('use_custom_wake_word', False) and 
@@ -627,10 +627,12 @@ def build_multinet_model_info(custom_wake_word_config, multinet_models):
         "threshold": custom_wake_word_config['threshold'],
         "commands": [
             {
-                "command": custom_wake_word_config['wake_word'],
-                "text": custom_wake_word_config['display'],
+                "command": w.strip(),
+                "text": (custom_wake_word_config['display'] if i == 0 else w.strip()),
                 "action": "wake"
             }
+            for i, w in enumerate(str(custom_wake_word_config['wake_word']).split(','))
+            if w.strip()
         ]
     }
 
