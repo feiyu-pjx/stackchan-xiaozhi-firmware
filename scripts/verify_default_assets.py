@@ -66,18 +66,24 @@ def verify_default_assets(sdkconfig_path, assets_path):
         raise ValueError("Assets index.json does not contain MultiNet metadata")
 
     commands = multinet.get("commands")
-    expected_command = {
-        "command": expected["wake_word"],
-        "text": expected["display"],
-        "action": "wake",
-    }
-    if commands != [expected_command]:
+    # 支持多别名：sdkconfig 里 CONFIG_CUSTOM_WAKE_WORD 可以写成逗号分隔的多个词，
+    # 生成时会拆成多条 command（都 action=wake，显示名取第一个）。
+    expected_commands = [
+        {
+            "command": w.strip(),
+            "text": (expected["display"] if i == 0 else w.strip()),
+            "action": "wake",
+        }
+        for i, w in enumerate(str(expected["wake_word"]).split(","))
+        if w.strip()
+    ]
+    if commands != expected_commands:
         raise ValueError(
             f"Packaged MultiNet commands {commands!r} do not match sdkconfig "
-            f"command {[expected_command]!r}"
+            f"commands {expected_commands!r}"
         )
 
-    return expected_command
+    return expected_commands[0]
 
 
 def main():
