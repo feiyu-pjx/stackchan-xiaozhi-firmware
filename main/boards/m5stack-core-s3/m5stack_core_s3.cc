@@ -1970,6 +1970,8 @@ private:
             vTaskDelay(pdMS_TO_TICKS(100));
             if (!si12t_dev_) continue;
             uint8_t out = Si12tReadReg(0x10);
+            // 0x3F = 三区同时报按下：芯片悬空/未校准时的噪声值，直接丢弃
+            if (out == 0x3F) out = 0;
             int64_t now = esp_timer_get_time();
             static int64_t last_diag = 0;
             if (now - last_diag > 2000000) {
