@@ -21,3 +21,6 @@ mmap_generate_*.h
 .github/
 .reasonix/
 .claude/
+
+# 表情图片资源（必须提交）
+!main/boards/m5stack-core-s3/faces/*.bin
