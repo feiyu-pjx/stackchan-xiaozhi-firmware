@@ -2013,14 +2013,17 @@ private:
                     const int nE = sizeof(kPetEmotions) / sizeof(kPetEmotions[0]);
                     const int nP = sizeof(kPetPrompts) / sizeof(kPetPrompts[0]);
                     if (display_) { display_->SetEmotion(kPetEmotions[esp_random() % nE]); }
+                    // 摸头固定反应：8 帧动画 + 蹭手
+                    if (display_) static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
+                    servo_.Nuzzle();
+                    // 只在已经处于对话中时才告诉她自己被摸了；
+                    // 待机时发文本会新建对话通道 → 每摸一次重连一次
                     {
-                        uint32_t r = esp_random() % 3;
-                        if (r == 0) servo_.Nod();
-                        else if (r == 1) servo_.Shake();
-                        else servo_.Tilt();
+                        auto& app = Application::GetInstance();
+                        if (app.GetDeviceState() != kDeviceStateIdle) {
+                            app.SendUserText(kPetPrompts[esp_random() % nP]);
+                        }
                     }
-                    // 让她开口：把这次“被摸”的经过发给她，她自己回话
-                    Application::GetInstance().SendUserText(kPetPrompts[esp_random() % nP]);
                     last_touch_time = now;
                     hold_ticks[zone] = 0;
                     break;
