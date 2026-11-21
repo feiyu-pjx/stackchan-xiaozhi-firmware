@@ -689,6 +689,7 @@ public:
     }
 
     void SetAnimMode(int m) { anim_mode_ = m; anim_idx_ = 0; anim_tick_ = 0; }
+    bool IsSpeaking() const { return speaking_until_ms_ != 0 && (int64_t)lv_tick_get() < speaking_until_ms_; }
 
     void StepFrameAnim() {
         if (!has_face_) return;
@@ -1300,6 +1301,7 @@ public:
     }
 
     void PlayPetAnim() { avatar_.SetAnimMode(2); }   // 摸头 8 帧动画
+    bool IsSpeaking() { return avatar_.IsSpeaking(); }
 
     void SetEmotion(const char* emotion) override {
         SpiLcdDisplay::SetEmotion(emotion);
@@ -1867,6 +1869,29 @@ private:
         }
         Py32SetLedFrame(colors, 12);
     }
+
+    // 说话时轻微晃头：300ms 一次，yaw ±2°、pitch ∓1°，幅度很小
+    void HeadSwayTick() {
+        if (servo_.IsAnimating()) return;
+        auto* disp = static_cast<M5StackAvatarDisplay*>(display_);
+        if (!disp || !disp->IsSpeaking()) return;
+        static int phase = 0;
+        int y = servo_.GetCurrentYaw(), p = servo_.GetCurrentPitch();
+        float s = sinf(phase * 0.9f);
+        servo_.MoveTo((int)(y + 2.0f * s), (int)(p - 1.0f * s), 260);
+        phase++;
+    }
+
+    void StartHeadSway() {
+        if (sway_timer_) return;
+        esp_timer_create_args_t a = {};
+        a.callback = [](void* arg) { static_cast<M5StackCoreS3Board*>(arg)->HeadSwayTick(); };
+        a.arg = this;
+        a.name = "head_sway";
+        if (esp_timer_create(&a, &sway_timer_) == ESP_OK) esp_timer_start_periodic(sway_timer_, 300000);
+    }
+
+    esp_timer_handle_t sway_timer_ = nullptr;
 
     void StartLedAnim() {
         if (led_timer_) return;
@@ -2566,7 +2591,13 @@ private:
                 } else {
                     pool = (dy_total < 0) ? &UpSwipePool() : &DownSwipePool();
                 }
-                // 手势旁白已停用（FT6336 读取超时会产生幽灵手势）
+                // 上滑 = 换下一个表情（其余手势仍停用，防 FT6336 幽灵手势）
+                if (abs_dy > abs_dx && dy_total < 0) {
+                    static int emo_idx = 0;
+                    static const char* kEmos[] = {"happy", "loving", "laughing", "surprised", "sad", "sleepy", "neutral"};
+                    if (display_) display_->SetEmotion(kEmos[emo_idx % 7]);
+                    emo_idx++;
+                }
                 return;
             }
 
@@ -2576,7 +2607,12 @@ private:
                 if (pending_single_release && (now - pending_single_release_time) <= DOUBLE_CLICK_MS) {
                     // 第二次短按落在窗口内 → 双击
                     pending_single_release = false;
-                    // 双击旁白已停用（同上）
+                    // 双击 = 摸头（开心表情 + 8 帧动画 + 蹭手），不再发旁白
+                    if (display_) {
+                        display_->SetEmotion("happy");
+                        static_cast<M5StackAvatarDisplay*>(display_)->PlayPetAnim();
+                    }
+                    servo_.Nuzzle();
                 } else {
                     // 候选单击，等下一帧或下次按下判定
                     pending_single_release = true;
@@ -2733,6 +2769,7 @@ public:
         InitializeFt6336TouchPad();
         InitializeBmi270();
         StartLedAnim();
+        StartHeadSway();
         InitializeSi12T();
         // Morning greeting + weather timer task removed; no-op call removed too
 
