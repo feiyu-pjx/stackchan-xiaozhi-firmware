@@ -748,39 +748,25 @@ public:
     bool face_dirty_ = true;   // 只有换表情时才重画整屏图片
 
     bool LoadFaceByEmotion(const char* emotion) {
-        const char* name = nullptr;
-        if (!emotion) name = "face_neutral.bin";
-        else if (!strcmp(emotion, "neutral")) name = "face_neutral.bin";
-        else if (!strcmp(emotion, "happy")) name = "face_happy.bin";
-        else if (!strcmp(emotion, "laughing") || !strcmp(emotion, "funny")) name = "face_laugh.bin";
-        else if (!strcmp(emotion, "loving") || !strcmp(emotion, "kissy") || !strcmp(emotion, "relaxed"))
-            name = "face_loving.bin";
-        else if (!strcmp(emotion, "sleepy") || !strcmp(emotion, "thinking") || !strcmp(emotion, "confused"))
-            name = "face_sleepy.bin";
-        else if (!strcmp(emotion, "surprised") || !strcmp(emotion, "shocked")) name = "face_surprised.bin";
-        else if (!strcmp(emotion, "embarrassed") || !strcmp(emotion, "cool") || !strcmp(emotion, "confident"))
-            name = "face_gentle.bin";
-        else if (!strcmp(emotion, "silly") || !strcmp(emotion, "winking")) name = "face_blink.bin";
-        else name = "face_neutral.bin";
-
-        void* ptr = nullptr;
-        size_t sz = 0;
-        if (!Assets::GetInstance().GetAssetData(name, ptr, sz) || sz < 320 * 240 * 2 || !ptr) {
-            if (has_face_) ESP_LOGW("Avatar", "face asset %s missing, keep previous", name);
-            return false;
-        }
-        face_px_ = ptr;
-        memset(&face_dsc_, 0, sizeof(face_dsc_));
-        face_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
-        face_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
-        face_dsc_.header.w = 320;
-        face_dsc_.header.h = 240;
-        face_w_ = 320; face_h_ = 240; face_x_ = 0; face_y_ = 0;
-        face_dsc_.data_size = sz;
-        face_dsc_.data = (const uint8_t*)ptr;
-        has_face_ = true;
-        face_dirty_ = true;
-        return true;
+        // 16 种「眼×嘴」组合（240x180 RGB565），按情绪挑一张
+        const char* name = "fx_m0_e0.bin";
+        if (!emotion) name = "fx_m0_e0.bin";
+        else if (!strcmp(emotion, "neutral") || !strcmp(emotion, "idle")) name = "fx_m0_e0.bin";
+        else if (!strcmp(emotion, "happy")) name = "fx_m0_e1.bin";
+        else if (!strcmp(emotion, "laughing") || !strcmp(emotion, "funny")) name = "fx_m1_e3.bin";
+        else if (!strcmp(emotion, "loving") || !strcmp(emotion, "kissy")) name = "fx_m1_e1.bin";
+        else if (!strcmp(emotion, "embarrassed")) name = "fx_m1_e2.bin";
+        else if (!strcmp(emotion, "gentle") || !strcmp(emotion, "relaxed")) name = "fx_m0_e2.bin";
+        else if (!strcmp(emotion, "sleepy") || !strcmp(emotion, "thinking") || !strcmp(emotion, "confused")) name = "fx_m0_e3.bin";
+        else if (!strcmp(emotion, "surprised") || !strcmp(emotion, "shocked")) name = "fx_m2_e0.bin";
+        else if (!strcmp(emotion, "sad") || !strcmp(emotion, "crying")) name = "fx_m2_e2.bin";
+        else if (!strcmp(emotion, "angry")) name = "fx_m3_e0.bin";
+        else if (!strcmp(emotion, "cool") || !strcmp(emotion, "confident")) name = "fx_m2_e1.bin";
+        else if (!strcmp(emotion, "silly") || !strcmp(emotion, "winking")) name = "fx_m3_e1.bin";
+        else if (!strcmp(emotion, "delicious")) name = "fx_m3_e2.bin";
+        else if (!strcmp(emotion, "blink")) name = "fx_m0_e3.bin";
+        else if (!strcmp(emotion, "speaking")) name = "fx_m1_e0.bin";
+        return LoadFaceAsset(name);
     }
 
     void Draw() {
