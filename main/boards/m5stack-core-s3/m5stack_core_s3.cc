@@ -12,9 +12,7 @@
 
 #include <esp_log.h>
 #include <cmath>
-#ifndef DEVICE_EVENT_TOKEN
-#define DEVICE_EVENT_TOKEN "1ef5d90555f45ee3"
-#endif
+
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <esp_heap_caps.h>
@@ -1574,6 +1572,7 @@ private:
     // ---- PY32 持久 I2C 设备句柄（控 LED + 其他扩展）----
     i2c_master_dev_handle_t py32_dev_ = nullptr;
     bool led_manual_ = false;
+    std::string event_token_;      // 身体事件上报的 token（运行时下发，不落仓库）
     // ---- LED_ANIM_V1：灯带动画（呼吸 / 脉冲 / 彩虹）----
     uint8_t led_r_ = 60, led_g_ = 35, led_b_ = 10;
     int led_mode_ = 0;      // 0=呼吸 1=脉冲 2=彩虹
@@ -2170,6 +2169,17 @@ private:
                 return true;
             });
 
+        // token 只在内存里，由桥在对话时下发（仓库不留密钥）
+        mcp.AddTool("self.dev.set_event_token",
+            "Set the token used for body-event HTTP reporting. Called by the bridge once per session; token is kept in RAM only.",
+            PropertyList({
+                Property("token", kPropertyTypeString)
+            }),
+            [this](const PropertyList& props) -> ReturnValue {
+                event_token_ = props["token"].value<std::string>();
+                ESP_LOGI(TAG, "device event token set (%u chars)", (unsigned)event_token_.size());
+                return true;
+            });
         mcp.AddTool("self.head.nuzzle",
             "Nuzzle the user's hand affectionately (small side-to-side wiggle with head dip). Use when petted or feeling clingy.",
             PropertyList(), [this](const PropertyList&) -> ReturnValue {
@@ -2486,7 +2496,8 @@ private:
             esp_http_client_handle_t cli = esp_http_client_init(&cfg);
             if (cli) {
                 esp_http_client_set_header(cli, "content-type", "application/json");
-                esp_http_client_set_header(cli, "x-device-token", DEVICE_EVENT_TOKEN);
+                if (event_token_.empty()) { esp_http_client_cleanup(cli); free(t); vTaskDelete(nullptr); return; }
+                esp_http_client_set_header(cli, "x-device-token", event_token_.c_str());
                 esp_http_client_set_post_field(cli, body, strlen(body));
                 esp_err_t err = esp_http_client_perform(cli);
                 if (err != ESP_OK) ESP_LOGW(TAG, "device/event 上报失败: %d", (int)err);
