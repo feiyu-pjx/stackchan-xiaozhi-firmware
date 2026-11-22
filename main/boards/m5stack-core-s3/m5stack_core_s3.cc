@@ -767,6 +767,7 @@ public:
         else if (!strcmp(emotion, "delicious")) name = "fx_m3_e2.bin";
         else if (!strcmp(emotion, "blink")) name = "fx_m0_e3.bin";
         else if (!strcmp(emotion, "speaking")) name = "fx_m1_e0.bin";
+        ESP_LOGI("Avatar", "emotion=%s -> %s", emotion ? emotion : "(null)", name);
         LoadFaceAsset(name);
         return has_face_;
     }
