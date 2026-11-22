@@ -2480,12 +2480,20 @@ private:
     }
 
     // ---- DEVICE_EVENT_V1：身体事件走 HTTP，不碰语音通道（否则会关通道重连）----
+    struct BodyEventCtx { char* text; char* token; };
+
     void PostBodyEvent(const char* text) {
         if (!text || !text[0]) return;
-        char* copy = strdup(text);
-        if (!copy) return;
+        if (event_token_.empty()) return;      // 桥没下发 token 就不发（静默）
+        auto* ctx = static_cast<BodyEventCtx*>(malloc(sizeof(BodyEventCtx)));
+        if (!ctx) return;
+        ctx->text = strdup(text);
+        ctx->token = strdup(event_token_.c_str());
+        if (!ctx->text || !ctx->token) { free(ctx->text); free(ctx->token); free(ctx); return; }
         xTaskCreatePinnedToCore([](void* arg) {
-            char* t = static_cast<char*>(arg);
+            auto* c = static_cast<BodyEventCtx*>(arg);
+            char* t = c->text;
+            char* tk = c->token;
             char body[160];
             snprintf(body, sizeof body, "{\"type\":\"body\",\"text\":\"%s\"}", t);
             esp_http_client_config_t cfg = {};
@@ -2496,16 +2504,15 @@ private:
             esp_http_client_handle_t cli = esp_http_client_init(&cfg);
             if (cli) {
                 esp_http_client_set_header(cli, "content-type", "application/json");
-                if (event_token_.empty()) { esp_http_client_cleanup(cli); free(t); vTaskDelete(nullptr); return; }
-                esp_http_client_set_header(cli, "x-device-token", event_token_.c_str());
+                esp_http_client_set_header(cli, "x-device-token", tk);
                 esp_http_client_set_post_field(cli, body, strlen(body));
                 esp_err_t err = esp_http_client_perform(cli);
                 if (err != ESP_OK) ESP_LOGW(TAG, "device/event 上报失败: %d", (int)err);
                 esp_http_client_cleanup(cli);
             }
-            free(t);
+            free(t); free(tk); free(c);
             vTaskDelete(nullptr);
-        }, "body_event", 4096, copy, 3, nullptr, 1);
+        }, "body_event", 4096, ctx, 3, nullptr, 1);
     }
 
     static void SendUserMessage(const char* msg) {
