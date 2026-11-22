@@ -699,7 +699,7 @@ public:
         // 说话时自动切嘴动（speaking_until_ms_ 由 SetChatMessage(assistant) 设置）
         bool speaking = (speaking_until_ms_ != 0 && (int64_t)lv_tick_get() < speaking_until_ms_);
         if (speaking && anim_mode_ != 2) {
-            if (++anim_tick_ >= 4) {   // 200ms/帧：再快会跟音频抢 SPI，听感卡顿
+            if (++anim_tick_ >= 6) {   // 300ms/帧：给音频让出 SPI
                 anim_tick_ = 0;
                 anim_idx_ = (anim_idx_ + 1) % 3;
                 char n[20]; snprintf(n, sizeof n, "f_talk%d.bin", anim_idx_ + 1);
