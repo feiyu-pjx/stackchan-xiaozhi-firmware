@@ -12,6 +12,9 @@
 
 #include <esp_log.h>
 #include <cmath>
+#ifndef DEVICE_EVENT_TOKEN
+#define DEVICE_EVENT_TOKEN "1ef5d90555f45ee3"
+#endif
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <esp_heap_caps.h>
@@ -2483,6 +2486,7 @@ private:
             esp_http_client_handle_t cli = esp_http_client_init(&cfg);
             if (cli) {
                 esp_http_client_set_header(cli, "content-type", "application/json");
+                esp_http_client_set_header(cli, "x-device-token", DEVICE_EVENT_TOKEN);
                 esp_http_client_set_post_field(cli, body, strlen(body));
                 esp_err_t err = esp_http_client_perform(cli);
                 if (err != ESP_OK) ESP_LOGW(TAG, "device/event 上报失败: %d", (int)err);
