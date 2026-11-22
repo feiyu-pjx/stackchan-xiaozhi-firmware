@@ -2610,12 +2610,20 @@ private:
                 } else {
                     pool = (dy_total < 0) ? &UpSwipePool() : &DownSwipePool();
                 }
-                // 上滑 = 换下一个表情（其余手势仍停用，防 FT6336 幽灵手势）
-                if (abs_dy > abs_dx && dy_total < 0) {
-                    static int emo_idx = 0;
-                    static const char* kEmos[] = {"happy", "loving", "laughing", "surprised", "sad", "sleepy", "neutral"};
-                    if (display_) display_->SetEmotion(kEmos[emo_idx % 7]);
-                    emo_idx++;
+                // 手势映射：上/下 = 抬头/低头，左/右 = 上一个/下一个表情
+                static int emo_idx = 0;
+                static const char* kEmos[] = {"happy", "loving", "laughing", "surprised", "sad", "angry", "sleepy", "embarrassed", "neutral"};
+                const int kEmoN = sizeof(kEmos) / sizeof(kEmos[0]);
+                if (abs_dy > abs_dx) {
+                    int yaw = servo_.GetCurrentYaw(), pitch = servo_.GetCurrentPitch();
+                    int target = (dy_total < 0) ? pitch + 10 : pitch - 10;   // 上滑抬头、下滑低头
+                    if (target < 10) target = 10;
+                    if (target > 55) target = 55;
+                    servo_.MoveTo(yaw, target, 400);
+                } else {
+                    emo_idx += (dx_total < 0) ? -1 : 1;                     // 左滑上一个、右滑下一个
+                    if (emo_idx < 0) emo_idx = kEmoN - 1;
+                    if (display_) display_->SetEmotion(kEmos[emo_idx % kEmoN]);
                 }
                 return;
             }
